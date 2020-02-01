@@ -44,4 +44,6 @@ echo "my node_id is ${ID}"
 
 # chmod 777 -R /tendermint
 
-main
+/usr/bin/swarmdag_app
+
+sleep 2147483647

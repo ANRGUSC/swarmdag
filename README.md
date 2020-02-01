@@ -13,18 +13,34 @@ variables:
     export GOPATH=$HOME/go
     export PATH=$PATH:$GOPATH/bin
 
-Then, follow the [Tendermint's procedures](https://tendermint.com/docs/introduction/install.html#from-binary)
-for installing/building from source. However, make sure to clone this repository
-instead of the official tendermint repository. That is,
+Follow the [Tendermint's procedures](https://tendermint.com/docs/introduction/install.html#from-binary)
+for installing/building from source. Then, install swarmdag via `go get`. 
 
-    git clone git@github.com:ANRGUSC/swarmdag.git
+    go get git@github.com:ANRGUSC/swarmdag.git
 
-You will then have to rename to top-level "swarmdag" directory to "tendermint" 
-so that this folder is at a location that looks like this:
+If the repository is private, you need to force github to clone via SSH instead
+of HTTP by default. In your `~/.gitconfig` file, append these two lines.
 
-    /home/username/goApps/src/github.com/tendermint/tendermint/swarmdag
 
-Once you rename the directory, proceed with the installation procedures. 
+```
+[url "git@github.com:"]
+    insteadOf = https://github.com/
+```
+
+Because the repository is private, you may run into some issues with go modules.
+Add the following environment variable to tell Go that you have a private repo.
+Add this to your .bashrc to make it permanent.
+
+    export GOPRIVATE="github.com/ANRGUSC"
+
+You may also run into issues with go-libp2p versioning because of the new global
+proxy for Go modules (goproxy). You can disable this by setting the following
+environment variable.
+
+    export GOPROXY=direct
+
+**WARNING: notes from here to InfluxDB are deprecated.**
+
 `make build` will create a binary in the tendermint/build/ directory. This
 will be revisited later.
 

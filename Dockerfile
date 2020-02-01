@@ -34,10 +34,10 @@ RUN chmod 777 -R /tendermint
 EXPOSE 26656 26657
 
 # ENTRYPOINT ["/usr/bin/tendermint"]
-ENTRYPOINT ["/usr/bin/wrapper.sh"]
-CMD ["node"]
+ENTRYPOINT ["/wrapper.sh"]
 STOPSIGNAL SIGTERM
 
 ARG BINARY=tendermint
 COPY $BINARY /usr/bin/tendermint
 COPY swarmdag_app /usr/bin/swarmdag_app
+RUN chmod 777 /usr/bin/swarmdag_app
