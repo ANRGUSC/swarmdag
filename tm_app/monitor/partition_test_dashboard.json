@@ -1,0 +1,1060 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": 6,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      },
+      "id": 9,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "autogen",
+          "query": "SELECT \"shortID\" FROM \"autogen\".\"partition\" WHERE (\"node\" = '0') AND $timeFilter",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "0"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 0",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "autogen",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "1"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 1",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 10,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "autogen",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "2"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 2",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      },
+      "id": 7,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "3"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 3",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 0,
+        "y": 8
+      },
+      "id": 8,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "4"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 4",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 5,
+        "y": 8
+      },
+      "id": 5,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "5"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 5",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 10,
+        "y": 8
+      },
+      "id": 6,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "6"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 6",
+      "transparent": true,
+      "type": "gauge"
+    },
+    {
+      "datasource": "InfluxDB",
+      "description": "",
+      "gridPos": {
+        "h": 8,
+        "w": 5,
+        "x": 15,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "fieldOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "defaults": {
+            "links": [
+              {
+                "title": "",
+                "url": "$"
+              }
+            ],
+            "mappings": [
+              {
+                "from": "",
+                "id": 1,
+                "operator": "",
+                "text": "",
+                "to": "",
+                "type": 2,
+                "value": ""
+              }
+            ],
+            "max": 10,
+            "min": 0,
+            "thresholds": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#E24D42",
+                "value": 1
+              },
+              {
+                "color": "#EF843C",
+                "value": 2
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 4
+              },
+              {
+                "color": "#EAB839",
+                "value": 5
+              },
+              {
+                "color": "#BA43A9",
+                "value": 6
+              },
+              {
+                "color": "#1F78C1",
+                "value": 7
+              },
+              {
+                "color": "#705DA0",
+                "value": 8
+              },
+              {
+                "color": "#508642",
+                "value": 9
+              },
+              {
+                "color": "#CCA300",
+                "value": 10
+              }
+            ],
+            "title": "Membership ID"
+          },
+          "override": {},
+          "values": false
+        },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "6.5.2",
+      "targets": [
+        {
+          "groupBy": [],
+          "measurement": "partition",
+          "orderByTime": "ASC",
+          "policy": "default",
+          "query": "SELECT mean(\"value\") FROM \"cpu_load_short\" WHERE $timeFilter GROUP BY time($__interval) fill(null)",
+          "rawQuery": false,
+          "refId": "A",
+          "resultFormat": "time_series",
+          "select": [
+            [
+              {
+                "params": [
+                  "shortID"
+                ],
+                "type": "field"
+              }
+            ]
+          ],
+          "tags": [
+            {
+              "key": "node",
+              "operator": "=",
+              "value": "7"
+            }
+          ]
+        }
+      ],
+      "timeFrom": null,
+      "timeShift": null,
+      "title": "Node 7",
+      "transparent": true,
+      "type": "gauge"
+    }
+  ],
+  "refresh": "1s",
+  "schemaVersion": 21,
+  "style": "dark",
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "",
+  "title": "SwarmDAG",
+  "uid": "piqHJhBWk",
+  "version": 6
+}
