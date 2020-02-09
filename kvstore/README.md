@@ -5,7 +5,7 @@ Kvstore is a simple key-value store with the following features:
  * Query all transactions stored in the ledger
  * Enable/Disable new incoming key-value 
 
-### Installation:
+### Installation
 
 This guide assumes a working tendermint instance and go 1.13.
 GO111MODULE=on need to be set.
@@ -31,7 +31,7 @@ TMHOME="/tmp/example" tendermint unsafe_reset_all
 rm -rf /tmp/example
 ```
 
-## Usage
+### Usage
 
 Adding a new key-value pair to the ledger:
 ```
