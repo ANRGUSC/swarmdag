@@ -42,6 +42,8 @@ Returning all key-value paris stored in the ledger:
 ```
 curl -s 'localhost:26657/abci_query?data="returnAll"'
 ```
+This will return all key-value pairs comma-seperated encoded in **base64**
+as the value in response.
 
 Enabling incmoing transactions (enabled by default on start):
 ```
