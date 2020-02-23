@@ -169,7 +169,7 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 			log.Fatalln(err)
 		}
 
-		fmt.Println("Returned all key=value pairs.")
+		fmt.Println("Returned all values")
 	}
 
 	return
@@ -183,8 +183,8 @@ func (app *CayleyApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcity
 	//app.currentBatch = app.db.NewTransaction(true)
 
 	// Create an empty quad? Will be overwritten with an actual quad with data
-	// Don't need it
-	//app.currentBatch = quad.Make(nil, nil, nil, nil)
+	// Make the old data inacessible
+	app.currentBatch = quad.Make(nil, nil, nil, nil)
 	return abcitypes.ResponseBeginBlock{}
 }
 
