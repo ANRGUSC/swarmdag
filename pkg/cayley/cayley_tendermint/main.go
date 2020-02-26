@@ -65,9 +65,9 @@ func main() {
 	app := NewCayleyApplication(db)
 
 	// Add some test data
-	db.AddQuad(quad.Make("phrase of the day", "is of course", "Hello BoltDB!", nil))
-	db.AddQuad(quad.Make("phrase of the day", "is of course", "second hello", nil))
-	db.AddQuad(quad.Make("second hello", "points to", "Hello BoltDB!", "a label"))
+	db.AddQuad(quad.Make("phraseoftheday", "isofcourse", "HelloBoltDB!", nil))
+	db.AddQuad(quad.Make("phraseoftheday", "isofcourse", "secondHello", nil))
+	db.AddQuad(quad.Make("secondhello", "pointsto", "Awesome", "alabel"))
 
 	flag.Parse()
 
@@ -103,6 +103,9 @@ func newTendermint(app abci.Application, configFile string) (*nm.Node, error) {
 	if err := config.ValidateBasic(); err != nil {
 		return nil, errors.Wrap(err, "config is invalid")
 	}
+
+	// disable empty blocks (other than default)
+	config.Consensus.CreateEmptyBlocks = false
 
 	// create logger
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
