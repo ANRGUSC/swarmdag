@@ -32,17 +32,9 @@ func init() {
 }
 
 func main() {
-	/*
-		db, err := badger.Open(badger.DefaultOptions("/tmp/badger"))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to open badger db: %v", err)
-			os.Exit(1)
-		}
-		defer db.Close()
-	*/
 
 	// File for your new BoltDB. Use path to regular file and not temporary in the real world
-	tmpdir, err := ioutil.TempDir("", "example")
+	tmpdir, err := ioutil.TempDir("", "cayleyFiles")
 	if err != nil {
 		panic(err)
 	}
