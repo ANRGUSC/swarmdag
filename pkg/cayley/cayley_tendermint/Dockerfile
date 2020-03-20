@@ -1,29 +1,21 @@
-FROM golang:alpine
+FROM scratch
 
-# Set necessary environmet variables needed for our image
-ENV GO111MODULE=on \
-    CGO_ENABLED=0 \
-    GOOS=linux \
-    GOARCH=amd64
-
-# Move to working directory /build
-WORKDIR /build
-
-# Copy and download dependency using go mod
-COPY files .
-
-COPY go.mod .
-COPY go.sum .
-RUN go mod download
+ADD cayley /
+ADD tendermint /
 
 # Copy the code into the container
-COPY . .
+ADD . /
+# COPY files/config/config.toml /conf/config.toml
 
-# Build the application
-RUN go build
+#CMD ["TMHOME='/'"]
+#CMD ["tendermint", "init"]
+
+COPY node0/config/config.toml /
+COPY node0/config/genesis.json /
+COPY node0/config/node_key.json /
+COPY node0/config/priv_validator_key.json /
 
 # Export necessary port
 EXPOSE 26656 26657
 
-# Command to run when starting the container
-CMD ["./cayley -config config.toml"]
+CMD ["/cayley", "-config /config.toml"]
