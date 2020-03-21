@@ -1,0 +1,71 @@
+version: '3'
+
+services:
+  c0:
+    container_name: c0
+    image: "anrg/test-memberlist"
+    ports:
+      - "26656-26657:26656-26657"
+      - "12345:12345"
+    environment:
+      - ID=0
+      - LOG=${LOG:-tendermint.log}
+    volumes:
+      - ./build:/tendermint:Z
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.2
+
+  c1:
+    container_name: c1
+    image: "anrg/test-memberlist"
+    ports:
+      - "26659-26660:26656-26657"
+      - "12346:12346"
+    environment:
+      - ID=1
+      - LOG=${LOG:-tendermint.log}
+    volumes:
+      - ./build:/tendermint:Z
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.3
+
+  c2:
+    container_name: c2
+    image: "anrg/test-memberlist"
+    environment:
+      - ID=2
+      - LOG=${LOG:-tendermint.log}
+    ports:
+      - "26661-26662:26656-26657"
+      - "12347:12347"
+    volumes:
+      - ./build:/tendermint:Z
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.4
+
+  c3:
+    container_name: c3
+    image: "anrg/test-memberlist"
+    environment:
+      - ID=3
+      - LOG=${LOG:-tendermint.log}
+    ports:
+      - "26663-26664:26656-26657"
+      - "12348:12348"
+    volumes:
+      - ./build:/tendermint:Z
+    networks:
+      localnet:
+        ipv4_address: 192.167.10.5
+
+networks:
+  localnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      -
+        subnet: 192.167.10.0/16
