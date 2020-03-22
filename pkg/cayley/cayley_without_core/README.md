@@ -63,3 +63,24 @@ Disable incoming transactions:
 ```
 curl -s 'localhost:26657/abci_query?data="disableTx"'
 ```
+
+### DOCKER
+
+```
+docker build -t cayley_container .
+```
+
+```
+docker run cayley_container
+```
+
+### DOCKER-COMPOSE
+
+```
+docker-compose up
+```
+
+After ctrl-c, run to delete the virtual network
+```
+docker-compose down
+```
