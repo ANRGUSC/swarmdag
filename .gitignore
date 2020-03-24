@@ -1,2 +1,4 @@
 *.sublime*
 .tags*
+
+build/
