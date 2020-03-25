@@ -1,17 +1,22 @@
 TENDERMINT_VER=0.33.2
 
-build-swarmdag:
-	@if [ -f swarmdag_app ]; then rm swarmdag_app; fi
-	CGO_ENABLED=0 go build -o swarmdag_app tm_app/main.go 
-	docker build -t "anrg/swarmdag" .
-
 run-single-node-test:
-	sudo rm -rf build/node*
-	tendermint testnet --v 1 --o ./build --populate-persistent-peers --starting-ip-address 172.17.0.2
-	docker run -it --rm -p 26656 -p 26657 -v $(CURDIR)/build:/tendermint:rw -e ID=0 anrg/swarmdag
+	# need sudo becuase Docker containers run as root
+	sudo rm -rf ./build/node* ./build/cayley.sock
+	./build/tendermint testnet --v 1 --o ./build --populate-persistent-peers --starting-ip-address 172.17.0.2
+	echo "attention: using ip address 172.17.0.2 for single node test"
+	docker run -it --rm -p 26656:26656 -p 26657:26657 -v $(CURDIR)/build:/fakego/src/github.com/ANRGUSC/swarmdag/build:rw -e ID=0 anrg/swarmdag
 
 push:
 	docker push "anrg/swarmdag"
+
+config-testnet:
+	sudo rm -rf ./build/node*
+	./build/tendermint testnet --v 4 --o ./build --populate-persistent-peers --starting-ip-address 192.167.10.2
+
+update-wrapper:
+	@if [ ! -d ./build ]; then mkdir build/; fi
+	cp wrapper.sh ./build/wrapper.sh
 
 get-tendermint:
 	@if [ ! -d ./build ]; then mkdir build/; fi
@@ -22,11 +27,20 @@ get-tendermint:
 		mv tendermint ./build/tendermint; \
 	fi
 
-reset-testnet:
-	sudo rm -rf build/*
-	tendermint testnet --v 4 --o ./build --populate-persistent-peers --starting-ip-address 172.17.0.2
+build-docker:
+	docker build -t "anrg/swarmdag" ./DOCKER/
+
+build-cayley:
+	CGO_ENABLED=0 go build -o ./build/cayley ./cmd/cayley/main.go
+
+build: update-wrapper get-tendermint build-cayley
+
+all: build config-testnet
+	docker-compose up
 
 clean:
-	rm -rf build/*
+	# need sudo becuase Docker containers run as root
+	sudo rm -rf build/
+	docker-compose down
 
 .PHONY: build push

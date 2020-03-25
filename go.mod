@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	github.com/cayleygraph/cayley v0.7.7
+	github.com/cayleygraph/quad v1.1.0
 	github.com/golang/protobuf v1.3.3
 	github.com/grafana-tools/sdk v0.0.0-20200127194913-bdcab199ffde
 	github.com/hashicorp/memberlist v0.1.6

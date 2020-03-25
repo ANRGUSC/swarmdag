@@ -1,13 +1,8 @@
 #!/usr/bin/env sh
 
-##
-## Input parameters
-##
-# BINARY=/tendermint/${BINARY:-tendermint}
-
 # Set node_id based on assigned IP address
 ID=$(($(hostname -i | cut -d "." -f 4)-2))
-LOG=${LOG:-tendermint.log}
+LOG=node${ID}-tendermint.log
 
 ##
 ## Assert linux binary
@@ -22,15 +17,10 @@ LOG=${LOG:-tendermint.log}
 #     exit 1
 # fi
 
-##
-## Run binary with all parameters
-##
-export TMHOME="/tendermint/node${ID}"
+export SWARMDAG_BUILD_PATH="$GOPATH/src/github.com/ANRGUSC/swarmdag/build"
+export TMHOME="${SWARMDAG_BUILD_PATH}/node${ID}"
 
 # PORT=$(9000+${ID})
-
-#start swarmdag tendermint app
-# swarmdag_app -port ${PORT} &
 
 echo "my node_id is ${ID}"
 
@@ -42,8 +32,10 @@ echo "my node_id is ${ID}"
 #   tendermint "$@" --consensus.create_empty_blocks=false
 # fi
 
-# chmod 777 -R /tendermint
+chmod 777 -R ${SWARMDAG_BUILD_PATH}
 
-/usr/bin/swarmdag_app
+${SWARMDAG_BUILD_PATH}/cayley &
+${SWARMDAG_BUILD_PATH}/tendermint node --rpc.laddr=tcp://0.0.0.0:26657 \
+    --consensus.create_empty_blocks=false -- | tee "${TMHOME}/${LOG}"
 
-sleep 2147483647
+# sleep 2147483647

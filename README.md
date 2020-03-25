@@ -13,8 +13,7 @@ variables:
     export GOPATH=$HOME/go
     export PATH=$PATH:$GOPATH/bin
 
-Follow the [Tendermint's procedures](https://tendermint.com/docs/introduction/install.html#from-binary)
-for installing/building from source. Then, install swarmdag via `go get`. 
+Install swarmdag via `go get`. 
 
     go get git@github.com:ANRGUSC/swarmdag.git
 
@@ -39,28 +38,25 @@ environment variable.
 
     export GOPROXY=direct
 
-**WARNING: notes from here to InfluxDB are deprecated.**
+### Developing using Docker Containers
 
-`make build` will create a binary in the tendermint/build/ directory. This
-will be revisited later.
+The following is a workflow for using Docker for development. The main way to
+run SwarmDAG is to use COREEMU.
 
-Then, if this is your first compilation or you've made changes to the Tendermint 
-Core:
+First, build the docker container if you have changed it. The Dockerfile should
+be kept simple by mounting all application files into the container.
 
-    make build_tendermint
+    make build-docker
 
-Then, build the SwarmDAG TM app and build the container
+Then, build and run via docker-compose by invoking
 
-    make build-all
+    make all 
 
-Alternatively, run `make build` to just rebuild the Docker image.
+There are additional make targets in the top level Makefile for use in 
+development (read the targets to understand the build flow. To remove all build 
+files, run
 
-Pre-generate tendermint configs for nodes by running this locally. This will 
-create a build/ folder with subfolders for each node. Modify the starting IP 
-address in the Makefile in this directory depending on your docker's bridge IP.
-
-    make reset-testnet
-
+    make clean
 
 ### InfluxDB Logging and Grafana Visualization
 
