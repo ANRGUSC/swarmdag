@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/cayleygraph/cayley/schema"
+
 	"github.com/cayleygraph/cayley"
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/quad"
@@ -16,10 +18,20 @@ import (
 	"github.com/tendermint/tendermint/libs/log"
 )
 
+// Transaction struct
+type Transaction struct {
+	Hash      []byte `json:"hash" quad:"hash"`
+	PrevHash  []byte `json:"prevHash" quad:"prevHash"`
+	Timestamp string `json:"timestamp"  quad:"timestap"`
+	Key       []byte `json:"key" quad:"key"`
+	Value     []byte `json:"value" quad:"value"`
+}
+
 var socketAddr string
 
 func init() {
 	flag.StringVar(&socketAddr, "socket-addr", "unix://cayley.sock", "Unix domain socket address")
+	schema.RegisterType("Transaction", Transaction{})
 }
 
 func main() {

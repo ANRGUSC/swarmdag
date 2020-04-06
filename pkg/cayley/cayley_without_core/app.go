@@ -92,37 +92,27 @@ func (app *CayleyApplication) Commit() abcitypes.ResponseCommit {
 }
 
 func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
-	// Path does not seem to work for me. Always empty
-	/*
-		Try using reqQuery.Path
+	// Debug: See if data and path work
+	fmt.Println("Request Query: Data=" + string(reqQuery.Data) + " Path=" + reqQuery.Path)
 
-		switch reqQuery.Path {
-		case "disableTx":
-			transactionsEnabled = false
-			resQuery.Log = "Incoming Transactions are disabled."
-			fmt.Println("Incoming Transactions are disabled.")
-		default:
-			resQuery.Log = fmt.Sprintf("Invalid query path. Got %v", reqQuery.Path)
-		}
-	*/
-
-	if string(reqQuery.Data) == "disableTx" {
+	if string(reqQuery.Path) == "disableTx" {
 		transactionsEnabled = false
 		resQuery.Log = "Incoming Transactions are disabled."
 		fmt.Println("Incoming Transactions are disabled.")
-	} else if string(reqQuery.Data) == "enableTx" {
+	} else if string(reqQuery.Path) == "enableTx" {
 		transactionsEnabled = true
 		resQuery.Log = "Incoming Transactions are enabled."
 		fmt.Println("Incoming Transactions are enabled.")
-	} else {
+	} else if (string(reqQuery.Path) == "find") || (string(reqQuery.Path) == "returnAll") {
 		//<subject>=<predicate> returns object
 
 		var p *cayley.Path
 
 		// Return all case
-		if string(reqQuery.Data) == "returnAll" {
+		if string(reqQuery.Path) == "returnAll" {
 			p = cayley.StartPath(app.db)
 		} else {
+			fmt.Println("adding new value...")
 			parts := bytes.Split(reqQuery.Data, []byte("="))
 			// Check format
 			if len(parts) != 2 {
