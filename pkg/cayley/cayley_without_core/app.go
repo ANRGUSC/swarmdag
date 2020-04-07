@@ -112,7 +112,6 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 		if string(reqQuery.Path) == "returnAll" {
 			p = cayley.StartPath(app.db)
 		} else {
-			fmt.Println("adding new value...")
 			parts := bytes.Split(reqQuery.Data, []byte("="))
 			// Check format
 			if len(parts) != 2 {
@@ -154,7 +153,6 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 			log.Fatalln(err)
 		}
 		resQuery.Value = []byte(result)
-		fmt.Println("Returned all values")
 	}
 
 	return
