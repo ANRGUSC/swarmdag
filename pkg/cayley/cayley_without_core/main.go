@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"syscall"
 	"time"
@@ -72,22 +75,24 @@ func main() {
 		Value:     []byte("Genesis"),
 	}
 	genesis.setHash()
-	db.AddQuad(quad.Make(genesis, nil, nil, nil))
+	app.db.AddQuad(quad.Make(genesis, nil, nil, nil))
 	genesis.Print()
 
 	//Add two test blocks after the Genesis
 	tx1 := NewTransaction([]byte("tx1"), []byte("test1"), genesis.Hash)
 	tx2 := NewTransaction([]byte("tx2"), []byte("test2"), tx1.Hash)
-	error := insert(db, tx1, genesis)
+	error := insert(app.db, tx1, genesis)
 	if error != nil {
 		panic(error)
 	}
-	error = insert(db, tx2, tx1)
+	error = insert(app.db, tx2, tx1)
 	if error != nil {
 		panic(error)
 	}
 	tx1.Print()
 	tx2.Print()
+
+	app.ReturnAll()
 
 	flag.Parse()
 
@@ -109,9 +114,9 @@ func main() {
 
 func insert(db *cayley.Handle, tx interface{}, prevTx interface{}) error {
 	/*
-		qw := graph.NewWriter(h)
+		qw := graph.NewWriter(db)
 		defer qw.Close() // don't forget to close a writer; it has some internal buffering
-		_, err := schema.WriteAsQuads(qw, o)
+		_, err := schema.WriteAsQuads(qw, tx)
 		return err
 	*/
 	err := db.AddQuad(quad.Make(tx, "follows", prevTx, nil))
@@ -135,11 +140,32 @@ func (t *Transaction) setHash() {
 
 // Print print the every value of the transaction as a string
 func (t *Transaction) Print() {
-	//fmt.Println("Hash: " + string(t.Hash) + " PrevHash: " + string(t.PrevHash) + " Timestamp: " + string(t.Timestamp) + " Key: " + string(t.Key) + " Value: " + string(t.Value))
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Printf("Hash: %x\n", t.Hash)
 	fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
+}
+
+//SortAndHash sorts the array and returns the Hash
+func SortAndHash(txs []Transaction) []byte {
+	sort.Slice(txs, func(i, j int) bool {
+		return string(txs[i].Hash) < string(txs[j].Hash)
+	})
+
+	var buffer bytes.Buffer
+	for i := range txs {
+		buffer.Write(txs[i].Hash)
+	}
+	hash := sha256.Sum256([]byte(buffer.String()))
+	return hash[:]
+}
+
+func returnJSON(txs []Transaction) []byte {
+	json, err := json.Marshal(txs)
+	if err != nil {
+		panic(err)
+	}
+	return json
 }

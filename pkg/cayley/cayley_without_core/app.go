@@ -139,6 +139,18 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 
 		result := ""
 
+		/* TRY THIS
+		iterator := app.db.QuadsAllIterator()
+		defer iterator.Close()
+		for iterator.Next(ctx) {
+			token := iterator.Result()    // get a ref to a node (backend-specific)
+			value := app.db.NameOf(token) // get the value in the node (RDF)
+			nativeValue := quad.NativeOf(value)
+			tx := nativeValue.(Transaction)
+			tx.Print()
+		}
+		*/
+
 		// While we have items
 		for it.Next(ctx) {
 			token := it.Result()                // get a ref to a node (backend-specific)
@@ -192,4 +204,72 @@ func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
 	// If desired, check if the same key=value already exists
 
 	return 0
+}
+
+// ReturnAll returns every transactions
+func (app *CayleyApplication) ReturnAll() {
+	//schema.RegisterType("Transaction", Transaction{})
+	var p *cayley.Path
+
+	p = cayley.StartPath(app.db)
+
+	ctx := context.TODO()
+
+	fmt.Println("Return All")
+	// Now we get an iterator for the path and optimize it.
+	// The second return is if it was optimized, but we don't care for now.
+	it, _ := p.BuildIterator().Optimize()
+
+	// remember to cleanup after yourself
+	defer it.Close()
+
+	//result := ""
+	/*
+		iterator := app.db.QuadsAllIterator()
+		defer iterator.Close()
+		for iterator.Next(ctx) {
+
+				token := iterator.Result()    // get a ref to a node (backend-specific)
+				value := app.db.NameOf(token) // get the value in the node (RDF)
+				nativeValue := quad.NativeOf(value)
+				tx := nativeValue.(Transaction)
+				fmt.Println(tx)
+				tx.Print()
+
+			fmt.Println(app.db.Quad(it.Result()))
+		}
+
+
+			err := schema.LoadTo(ctx, app.db, &txs)
+			if err != nil {
+				panic(err)
+			}
+
+			for _, t := range txs {
+				t.Print()
+			}
+	*/
+	var txs []Transaction
+	// While we have items
+	for it.Next(ctx) {
+		token := it.Result()                // get a ref to a node (backend-specific)
+		value := app.db.NameOf(token)       // get the value in the node (RDF)
+		nativeValue := quad.NativeOf(value) // convert value to normal Go type
+
+		if nativeValue != "follows" {
+			fmt.Println(nativeValue) // print it!
+
+			t, ok := nativeValue.(Transaction)
+			if ok == true {
+				fmt.Println("ok")
+				t.Print()
+				_ = append(txs, t)
+			}
+		}
+
+	}
+	if err := it.Err(); err != nil {
+		log.Fatalln(err)
+	}
+
 }
