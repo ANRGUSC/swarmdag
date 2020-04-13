@@ -70,7 +70,7 @@ func main() {
 	genesis := Transaction{
 		Hash:      []byte{},
 		PrevHash:  []byte{},
-		Timestamp: time.Now().Unix(),
+		Timestamp: time.Now().UnixNano(),
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),
 	}
@@ -93,6 +93,11 @@ func main() {
 	tx2.Print()
 
 	app.ReturnAll()
+
+	// Test
+	var txs []Transaction
+	txs = append(txs, *tx1, *tx2)
+	fmt.Println(ReturnJSON(txs))
 
 	flag.Parse()
 
@@ -125,7 +130,7 @@ func insert(db *cayley.Handle, tx interface{}, prevTx interface{}) error {
 
 // NewTransaction creates a new Transaction struct
 func NewTransaction(key []byte, value []byte, prevHash []byte) *Transaction {
-	transaction := &Transaction{[]byte{}, prevHash, time.Now().Unix(), key, value}
+	transaction := &Transaction{[]byte{}, prevHash, time.Now().UnixNano(), key, value}
 	transaction.setHash()
 	return transaction
 }
@@ -148,11 +153,15 @@ func (t *Transaction) Print() {
 	fmt.Println()
 }
 
-//SortAndHash sorts the array and returns the Hash
-func SortAndHash(txs []Transaction) []byte {
+func Sort(txs []Transaction) {
 	sort.Slice(txs, func(i, j int) bool {
 		return string(txs[i].Hash) < string(txs[j].Hash)
 	})
+}
+
+//SortAndHash sorts the array and returns the Hash
+func SortAndHash(txs []Transaction) []byte {
+	Sort(txs)
 
 	var buffer bytes.Buffer
 	for i := range txs {
@@ -162,10 +171,26 @@ func SortAndHash(txs []Transaction) []byte {
 	return hash[:]
 }
 
-func returnJSON(txs []Transaction) []byte {
+func ReturnJSON(txs []Transaction) []byte {
+	Sort(txs)
 	json, err := json.Marshal(txs)
 	if err != nil {
 		panic(err)
 	}
 	return json
+}
+
+// Insert from JSOn converts back
+func InsertFromJSON(jsonInput []byte) []Transaction {
+	// convert the JSON to structs
+	var txs []Transaction
+	err := json.Unmarshal(jsonInput, &txs)
+	if err != nil {
+		panic(err)
+	}
+
+	// Use search function to see if transaction exist already
+
+	// If not, insert into cayley by finding the previous tx
+	return txs
 }

@@ -266,7 +266,6 @@ func (app *CayleyApplication) ReturnAll() {
 				_ = append(txs, t)
 			}
 		}
-
 	}
 	if err := it.Err(); err != nil {
 		log.Fatalln(err)
