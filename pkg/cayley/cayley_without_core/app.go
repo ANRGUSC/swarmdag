@@ -209,7 +209,7 @@ func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
 }
 
 // ReturnAll returns every transactions
-func (app *CayleyApplication) ReturnAll() []*Transaction {
+func (app *CayleyApplication) ReturnAll() []Transaction {
 	//schema.RegisterType("Transaction", Transaction{})
 	var p *cayley.Path
 
@@ -250,7 +250,7 @@ func (app *CayleyApplication) ReturnAll() []*Transaction {
 				t.Print()
 			}
 	*/
-	var txs []*Transaction
+	var txs []Transaction
 	// While we have items
 	for it.Next(ctx) {
 		token := it.Result()          // get a ref to a node (backend-specific)
@@ -268,46 +268,26 @@ func (app *CayleyApplication) ReturnAll() []*Transaction {
 
 			str, okay := nativeValue.(string)
 			if okay == false {
-				fmt.Println("false")
+				fmt.Println("Could not convert to string")
 			} else {
 				//fmt.Println("okay")
 				//fmt.Println(str)
 			}
 
-			startH := strings.Index(str, "[")
-			endH := strings.Index(str, "]")
-			endH = endH + 1
-			valH := str[startH:endH]
-			str = str[endH:]
-			fmt.Println("valH: " + valH)
+			valH, next := extractByteArray(str)
+			str = str[next:]
 
-			startP := strings.Index(str, "[")
-			endP := strings.Index(str, "]")
-			endP = endP + 1
-			valP := str[startP:endP]
-			str = str[endP:]
-			fmt.Println("valP: " + valP)
+			valP, next := extractByteArray(str)
+			str = str[next:]
 
-			startT := strings.Index(str, "[")
-			endT := strings.Index(str, "]")
-			endT = endT + 1
-			valT := str[startT:endT]
-			str = str[endT:]
-			fmt.Println("valT: " + valT)
+			valT, next := extractByteArray(str)
+			str = str[next:]
 
-			startK := strings.Index(str, "[")
-			endK := strings.Index(str, "]")
-			endK = endK + 1
-			valK := str[startK:endK]
-			str = str[endK:]
-			fmt.Println("valK: " + valK)
+			valK, next := extractByteArray(str)
+			str = str[next:]
 
-			startV := strings.Index(str, "[")
-			endV := strings.Index(str, "]")
-			endV = endV + 1
-			valV := str[startV:endV]
-			str = str[endV:]
-			fmt.Println("valV: " + valV)
+			valV, next := extractByteArray(str)
+			str = str[next:]
 
 			newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
 			//newTx.Print()
@@ -323,18 +303,15 @@ func (app *CayleyApplication) ReturnAll() []*Transaction {
 			*/
 		}
 	}
-	if err := it.Err(); err != nil {
-		log.Fatalln(err)
-	}
 
-	for _, t := range txs {
-		(*t).Print()
-	}
+	PrintAll(txs)
 
 	return txs
-
 }
 
+// Helper Functions
+
+// Returns the string representation of a []byte as a []byte
 func stringToByte(str string) []byte {
 	var bb []byte
 	if str == "[]" {
@@ -343,7 +320,16 @@ func stringToByte(str string) []byte {
 	for _, ps := range strings.Split(strings.Trim(str, "[]"), " ") {
 		pi, _ := strconv.Atoi(ps)
 		bb = append(bb, byte(pi))
-
 	}
 	return bb
+}
+
+// Returns the first []byte in the string as a string
+// next is the index after the end of the []byte string
+func extractByteArray(str string) (string, int) {
+	startIndex := strings.Index(str, "[")
+	endIndex := strings.Index(str, "]")
+	value := str[startIndex : endIndex+1]
+	//fmt.Println("Value: " + value)
+	return value, (endIndex + 1)
 }

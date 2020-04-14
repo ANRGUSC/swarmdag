@@ -140,8 +140,8 @@ func NewTransaction(key []byte, value []byte, prevHash []byte) *Transaction {
 }
 
 //RestoreTransaction restores a transaction
-func RestoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) *Transaction {
-	transaction := &Transaction{hash, prevHash, timestamp, key, value}
+func RestoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
+	transaction := Transaction{hash, prevHash, timestamp, key, value}
 	return transaction
 }
 
@@ -154,7 +154,7 @@ func (t *Transaction) setHash() {
 }
 
 // Print print the every value of the transaction as a string
-func (t *Transaction) Print() {
+func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Printf("Hash: %x\n", t.Hash)
@@ -163,9 +163,18 @@ func (t *Transaction) Print() {
 	fmt.Println()
 }
 
+// PrintAll prints all the transactions in the slice
+func PrintAll(txs []Transaction) {
+	for _, t := range txs {
+		t.Print()
+	}
+}
+
+// Sort sorts the array based on the hash on the transactions
 func Sort(txs []Transaction) {
 	sort.Slice(txs, func(i, j int) bool {
-		return string(txs[i].Hash) < string(txs[j].Hash)
+		//return string(txs[i].Hash) < string(txs[j].Hash)
+		return fmt.Sprintf("%x", txs[i].Hash) < fmt.Sprintf("%x", txs[j].Hash)
 	})
 }
 
@@ -181,6 +190,7 @@ func SortAndHash(txs []Transaction) []byte {
 	return hash[:]
 }
 
+// ReturnJSON return the JSON representation of all sorted transactions
 func ReturnJSON(txs []Transaction) []byte {
 	Sort(txs)
 	json, err := json.Marshal(txs)
@@ -190,7 +200,7 @@ func ReturnJSON(txs []Transaction) []byte {
 	return json
 }
 
-// Insert from JSOn converts back
+// InsertFromJSON inserts new transaction in the JSON into the graph
 func InsertFromJSON(jsonInput []byte) []Transaction {
 	// convert the JSON to structs
 	var txs []Transaction
