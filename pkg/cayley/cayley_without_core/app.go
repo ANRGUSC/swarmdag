@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
@@ -207,7 +209,7 @@ func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
 }
 
 // ReturnAll returns every transactions
-func (app *CayleyApplication) ReturnAll() {
+func (app *CayleyApplication) ReturnAll() []*Transaction {
 	//schema.RegisterType("Transaction", Transaction{})
 	var p *cayley.Path
 
@@ -215,7 +217,6 @@ func (app *CayleyApplication) ReturnAll() {
 
 	ctx := context.TODO()
 
-	fmt.Println("Return All")
 	// Now we get an iterator for the path and optimize it.
 	// The second return is if it was optimized, but we don't care for now.
 	it, _ := p.BuildIterator().Optimize()
@@ -249,26 +250,100 @@ func (app *CayleyApplication) ReturnAll() {
 				t.Print()
 			}
 	*/
-	var txs []Transaction
+	var txs []*Transaction
 	// While we have items
 	for it.Next(ctx) {
-		token := it.Result()                // get a ref to a node (backend-specific)
-		value := app.db.NameOf(token)       // get the value in the node (RDF)
+		token := it.Result()          // get a ref to a node (backend-specific)
+		value := app.db.NameOf(token) // get the value in the node (RDF)
+		//fmt.Print("Type is: ")
+		//fmt.Println(reflect.TypeOf(value))
+		//go build
+		//fmt.Println(value)
 		nativeValue := quad.NativeOf(value) // convert value to normal Go type
 
 		if nativeValue != "follows" {
-			fmt.Println(nativeValue) // print it!
+			//fmt.Println(nativeValue) // print it!
+			//fmt.Print("Type is: ")
+			//fmt.Println(reflect.TypeOf(nativeValue))
 
-			t, ok := nativeValue.(Transaction)
-			if ok == true {
-				fmt.Println("ok")
-				t.Print()
-				_ = append(txs, t)
+			str, okay := nativeValue.(string)
+			if okay == false {
+				fmt.Println("false")
+			} else {
+				//fmt.Println("okay")
+				//fmt.Println(str)
 			}
+
+			startH := strings.Index(str, "[")
+			endH := strings.Index(str, "]")
+			endH = endH + 1
+			valH := str[startH:endH]
+			str = str[endH:]
+			fmt.Println("valH: " + valH)
+
+			startP := strings.Index(str, "[")
+			endP := strings.Index(str, "]")
+			endP = endP + 1
+			valP := str[startP:endP]
+			str = str[endP:]
+			fmt.Println("valP: " + valP)
+
+			startT := strings.Index(str, "[")
+			endT := strings.Index(str, "]")
+			endT = endT + 1
+			valT := str[startT:endT]
+			str = str[endT:]
+			fmt.Println("valT: " + valT)
+
+			startK := strings.Index(str, "[")
+			endK := strings.Index(str, "]")
+			endK = endK + 1
+			valK := str[startK:endK]
+			str = str[endK:]
+			fmt.Println("valK: " + valK)
+
+			startV := strings.Index(str, "[")
+			endV := strings.Index(str, "]")
+			endV = endV + 1
+			valV := str[startV:endV]
+			str = str[endV:]
+			fmt.Println("valV: " + valV)
+
+			newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
+			//newTx.Print()
+			txs = append(txs, newTx)
+
+			/*
+				t, ok := nativeValue.(Transaction)
+				if ok == true {
+					fmt.Println("ok")
+					t.Print()
+				}
+				txs = append(txs, t)
+			*/
 		}
 	}
 	if err := it.Err(); err != nil {
 		log.Fatalln(err)
 	}
 
+	for _, t := range txs {
+		(*t).Print()
+	}
+
+	return txs
+
+}
+
+func stringToByte(str string) []byte {
+	var bb []byte
+	if str == "[]" {
+		return []byte{}
+	}
+	for _, ps := range strings.Split(strings.Trim(str, "[]"), " ") {
+		pi, _ := strconv.Atoi(ps)
+		bb = append(bb, byte(pi))
+
+	}
+	return bb
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"sort"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -29,7 +29,7 @@ import (
 type Transaction struct {
 	Hash      []byte `json:"hash" quad:"hash"`
 	PrevHash  []byte `json:"prevHash" quad:"prevHash"`
-	Timestamp int64  `json:"timestamp"  quad:"timestap"`
+	Timestamp []byte `json:"timestamp"  quad:"timestap"`
 	Key       []byte `json:"key" quad:"key"`
 	Value     []byte `json:"value" quad:"value"`
 }
@@ -67,10 +67,12 @@ func main() {
 	app := NewCayleyApplication(db)
 
 	//Create and add the Genesis Block
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(time.Now().UnixNano()))
 	genesis := Transaction{
 		Hash:      []byte{},
 		PrevHash:  []byte{},
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: b,
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),
 	}
@@ -97,7 +99,7 @@ func main() {
 	// Test
 	var txs []Transaction
 	txs = append(txs, *tx1, *tx2)
-	fmt.Println(ReturnJSON(txs))
+	//fmt.Println(ReturnJSON(txs))
 
 	flag.Parse()
 
@@ -130,14 +132,22 @@ func insert(db *cayley.Handle, tx interface{}, prevTx interface{}) error {
 
 // NewTransaction creates a new Transaction struct
 func NewTransaction(key []byte, value []byte, prevHash []byte) *Transaction {
-	transaction := &Transaction{[]byte{}, prevHash, time.Now().UnixNano(), key, value}
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(time.Now().UnixNano()))
+	transaction := &Transaction{[]byte{}, prevHash, b, key, value}
 	transaction.setHash()
 	return transaction
 }
 
+//RestoreTransaction restores a transaction
+func RestoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) *Transaction {
+	transaction := &Transaction{hash, prevHash, timestamp, key, value}
+	return transaction
+}
+
 func (t *Transaction) setHash() {
-	timestamp := []byte(strconv.FormatInt(t.Timestamp, 10))
-	headers := bytes.Join([][]byte{t.PrevHash, t.Key, t.Value, timestamp}, []byte{})
+	//timestamp := []byte(strconv.FormatInt(t.Timestamp, 10))
+	headers := bytes.Join([][]byte{t.PrevHash, t.Key, t.Value, t.Timestamp}, []byte{})
 	hash := sha512.Sum512(headers)
 
 	t.Hash = hash[:]
