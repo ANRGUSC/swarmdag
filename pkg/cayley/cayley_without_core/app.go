@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -307,6 +308,54 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 	PrintAll(txs)
 
 	return txs
+}
+
+func (app *CayleyApplication) search(hash []byte) (*Transaction, error) {
+	var p *cayley.Path
+	p = cayley.StartPath(app.db)
+	ctx := context.TODO()
+	// Now we get an iterator for the path and optimize it.
+	// The second return is if it was optimized, but we don't care for now.
+	it, _ := p.BuildIterator().Optimize()
+	// remember to cleanup after yourself
+	defer it.Close()
+
+	// While we have items
+	for it.Next(ctx) {
+		token := it.Result()                // get a ref to a node (backend-specific)
+		value := app.db.NameOf(token)       // get the value in the node (RDF)
+		nativeValue := quad.NativeOf(value) // convert value to normal Go type
+
+		if nativeValue != "follows" {
+
+			str, okay := nativeValue.(string)
+			if okay == false {
+				fmt.Println("Could not convert to string")
+			}
+
+			valH, next := extractByteArray(str)
+			str = str[next:]
+
+			if bytes.Compare(stringToByte(valH), hash) == 0 {
+				// We found the transaction we were looking for
+				valP, next := extractByteArray(str)
+				str = str[next:]
+
+				valT, next := extractByteArray(str)
+				str = str[next:]
+
+				valK, next := extractByteArray(str)
+				str = str[next:]
+
+				valV, next := extractByteArray(str)
+				str = str[next:]
+
+				newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
+				return &newTx, nil
+			}
+		}
+	}
+	return nil, errors.New("Cannot find transaction")
 }
 
 // Helper Functions
