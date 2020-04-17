@@ -94,12 +94,21 @@ func main() {
 	tx1.Print()
 	tx2.Print()
 
-	app.ReturnAll()
+	txs := app.ReturnAll()
 
 	// Test
-	var txs []Transaction
-	txs = append(txs, *tx1, *tx2)
+	//var txs []Transaction
+	//txs = append(txs, *tx1, *tx2)
 	//fmt.Println(ReturnJSON(txs))
+
+	Sort(txs)
+	PrintAll(txs)
+	fmt.Printf("Total Hash: %x\n", SortAndHash(txs))
+
+	json := ReturnJSON(txs)
+	fmt.Println(json)
+	insertedTx := InsertFromJSON(app, []byte(json))
+	PrintAll(insertedTx)
 
 	flag.Parse()
 
@@ -181,27 +190,26 @@ func Sort(txs []Transaction) {
 //SortAndHash sorts the array and returns the Hash
 func SortAndHash(txs []Transaction) []byte {
 	Sort(txs)
-
 	var buffer bytes.Buffer
 	for i := range txs {
 		buffer.Write(txs[i].Hash)
 	}
-	hash := sha256.Sum256([]byte(buffer.String()))
+	hash := sha256.Sum256(buffer.Bytes())
 	return hash[:]
 }
 
 // ReturnJSON return the JSON representation of all sorted transactions
-func ReturnJSON(txs []Transaction) []byte {
+func ReturnJSON(txs []Transaction) string {
 	Sort(txs)
 	json, err := json.Marshal(txs)
 	if err != nil {
 		panic(err)
 	}
-	return json
+	return string(json)
 }
 
 // InsertFromJSON inserts new transaction in the JSON into the graph
-func InsertFromJSON(jsonInput []byte) []Transaction {
+func InsertFromJSON(app *CayleyApplication, jsonInput []byte) []Transaction {
 	// convert the JSON to structs
 	var txs []Transaction
 	err := json.Unmarshal(jsonInput, &txs)
@@ -210,7 +218,22 @@ func InsertFromJSON(jsonInput []byte) []Transaction {
 	}
 
 	// Use search function to see if transaction exist already
-
 	// If not, insert into cayley by finding the previous tx
+	for i := range txs {
+		if app.Search(txs[i].Hash) == nil {
+
+			// What if previous Hash does not exist
+			// Find the previous Transaction
+			prevTx := app.Search(txs[i].PrevHash)
+
+			if prevTx == nil {
+				panic("Could not find the previous transaction in the database")
+			}
+
+			insert(app.db, txs[i], (*prevTx))
+		}
+		fmt.Println("Transaction exists")
+	}
+
 	return txs
 }

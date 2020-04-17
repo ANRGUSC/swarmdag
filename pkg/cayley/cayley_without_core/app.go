@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -51,6 +50,9 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	if code != 0 {
 		return abcitypes.ResponseDeliverTx{Code: code}
 	}
+
+	// Detect the JSON format using [{"hash"
+	// Otherwise, create a new key, value transaction
 
 	parts := bytes.Split(req.Tx, []byte("="))
 	subject, predicate, object, tag := parts[0][1:len(parts[0])-1], parts[1][1:len(parts[1])-1],
@@ -310,7 +312,8 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 	return txs
 }
 
-func (app *CayleyApplication) search(hash []byte) (*Transaction, error) {
+// Search returns nil if not found
+func (app *CayleyApplication) Search(hash []byte) *Transaction {
 	var p *cayley.Path
 	p = cayley.StartPath(app.db)
 	ctx := context.TODO()
@@ -351,11 +354,11 @@ func (app *CayleyApplication) search(hash []byte) (*Transaction, error) {
 				str = str[next:]
 
 				newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
-				return &newTx, nil
+				return &newTx
 			}
 		}
 	}
-	return nil, errors.New("Cannot find transaction")
+	return nil
 }
 
 // Helper Functions
