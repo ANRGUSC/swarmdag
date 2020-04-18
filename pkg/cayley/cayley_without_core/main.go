@@ -66,13 +66,12 @@ func main() {
 
 	app := NewCayleyApplication(db)
 
-	//Create and add the Genesis Block
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, uint64(time.Now().UnixNano()))
+	// Create and add the Genesis Block
+	// It will always have the same hash b/c it does not include a timestamp
 	genesis := Transaction{
 		Hash:      []byte{},
 		PrevHash:  []byte{},
-		Timestamp: b,
+		Timestamp: []byte{},
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),
 	}
@@ -83,11 +82,11 @@ func main() {
 	//Add two test blocks after the Genesis
 	tx1 := NewTransaction([]byte("tx1"), []byte("test1"), genesis.Hash)
 	tx2 := NewTransaction([]byte("tx2"), []byte("test2"), tx1.Hash)
-	error := insert(app.db, tx1, genesis)
+	error := app.Insert(tx1, genesis)
 	if error != nil {
 		panic(error)
 	}
-	error = insert(app.db, tx2, tx1)
+	error = app.Insert(tx2, tx1)
 	if error != nil {
 		panic(error)
 	}
@@ -96,18 +95,13 @@ func main() {
 
 	txs := app.ReturnAll()
 
-	// Test
-	//var txs []Transaction
-	//txs = append(txs, *tx1, *tx2)
-	//fmt.Println(ReturnJSON(txs))
-
 	Sort(txs)
 	PrintAll(txs)
 	fmt.Printf("Total Hash: %x\n", SortAndHash(txs))
 
 	json := ReturnJSON(txs)
 	fmt.Println(json)
-	insertedTx := InsertFromJSON(app, []byte(json))
+	insertedTx := app.InsertFromJSON([]byte(json))
 	PrintAll(insertedTx)
 
 	flag.Parse()
@@ -128,27 +122,28 @@ func main() {
 	os.Exit(0)
 }
 
-func insert(db *cayley.Handle, tx interface{}, prevTx interface{}) error {
+// Insert adds a new transction to the DAG
+func (app *CayleyApplication) Insert(tx interface{}, prevTx interface{}) error {
 	/*
 		qw := graph.NewWriter(db)
 		defer qw.Close() // don't forget to close a writer; it has some internal buffering
 		_, err := schema.WriteAsQuads(qw, tx)
 		return err
 	*/
-	err := db.AddQuad(quad.Make(tx, "follows", prevTx, nil))
+	err := app.db.AddQuad(quad.Make(tx, "follows", prevTx, nil))
 	return err
 }
 
 // NewTransaction creates a new Transaction struct
-func NewTransaction(key []byte, value []byte, prevHash []byte) *Transaction {
+func NewTransaction(key []byte, value []byte, prevHash []byte) Transaction {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(time.Now().UnixNano()))
-	transaction := &Transaction{[]byte{}, prevHash, b, key, value}
+	transaction := Transaction{[]byte{}, prevHash, b, key, value}
 	transaction.setHash()
 	return transaction
 }
 
-//RestoreTransaction restores a transaction
+//RestoreTransaction restores a transaction fetched from the DAG
 func RestoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
 	transaction := Transaction{hash, prevHash, timestamp, key, value}
 	return transaction
@@ -209,7 +204,7 @@ func ReturnJSON(txs []Transaction) string {
 }
 
 // InsertFromJSON inserts new transaction in the JSON into the graph
-func InsertFromJSON(app *CayleyApplication, jsonInput []byte) []Transaction {
+func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) []Transaction {
 	// convert the JSON to structs
 	var txs []Transaction
 	err := json.Unmarshal(jsonInput, &txs)
@@ -227,13 +222,15 @@ func InsertFromJSON(app *CayleyApplication, jsonInput []byte) []Transaction {
 			prevTx := app.Search(txs[i].PrevHash)
 
 			if prevTx == nil {
-				panic("Could not find the previous transaction in the database")
+				panic("TODO: Could not insert b/c previous transaction is not in the database")
+				// I think we can just insert the tranaction with prev. Tx as nil
+				// Would create an unconnected side chain which will become connected later at some point
+				// The graph iterator will still find this unconnected transaction
 			}
 
-			insert(app.db, txs[i], (*prevTx))
+			app.Insert(txs[i], (*prevTx))
 		}
 		fmt.Println("Transaction exists")
 	}
-
 	return txs
 }

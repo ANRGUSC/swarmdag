@@ -15,11 +15,13 @@ import (
 	"github.com/cayleygraph/quad"
 )
 
+// CayleyApplication stores db and current struct
 type CayleyApplication struct {
 	db           *cayley.Handle
 	currentBatch quad.Quad
 }
 
+// NewCayleyApplication creates new Instance
 func NewCayleyApplication(db *cayley.Handle) *CayleyApplication {
 	return &CayleyApplication{
 		db: db,
@@ -29,14 +31,17 @@ func NewCayleyApplication(db *cayley.Handle) *CayleyApplication {
 var _ abcitypes.Application = (*CayleyApplication)(nil)
 var transactionsEnabled = true
 
+// Info Tendermint ABCI
 func (app *CayleyApplication) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo {
 	return abcitypes.ResponseInfo{}
 }
 
+// SetOption Tendermint ABCI
 func (app *CayleyApplication) SetOption(req abcitypes.RequestSetOption) abcitypes.ResponseSetOption {
 	return abcitypes.ResponseSetOption{}
 }
 
+// DeliverTx Tendermint ABCI
 func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 
 	code := app.isValid(req.Tx)
@@ -76,6 +81,7 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	return abcitypes.ResponseDeliverTx{Code: 0}
 }
 
+// CheckTx Tendermint ABCI
 func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
 	/*
 		Disable new incoming transactions while tendermint is running by returning
@@ -90,12 +96,14 @@ func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 	return abcitypes.ResponseCheckTx{Code: code, GasWanted: 1}
 }
 
+// Commit Tendermint ABCI
 func (app *CayleyApplication) Commit() abcitypes.ResponseCommit {
 	// Save data to cayley graph
 	app.db.AddQuad(app.currentBatch)
 	return abcitypes.ResponseCommit{Data: []byte{}}
 }
 
+// Query Tendermint ABCI
 func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
 	// Debug: See if data and path work
 	fmt.Println("Request Query: Data=" + string(reqQuery.Data) + " Path=" + reqQuery.Path)
@@ -175,10 +183,12 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 	return
 }
 
+// InitChain Tendermint ABCI
 func (app *CayleyApplication) InitChain(req abcitypes.RequestInitChain) abcitypes.ResponseInitChain {
 	return abcitypes.ResponseInitChain{}
 }
 
+// BeginBlock Tendermint ABCI
 func (app *CayleyApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
 	// Create an empty quad. Will be overwritten with an actual quad with data
 	// Make the old data inaccessible
@@ -187,6 +197,7 @@ func (app *CayleyApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcity
 	return abcitypes.ResponseBeginBlock{}
 }
 
+// EndBlock Tendermint ABCI
 func (app *CayleyApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
 	return abcitypes.ResponseEndBlock{}
 }
