@@ -170,6 +170,7 @@ func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Printf("Hash: %x\n", t.Hash)
+	fmt.Println(t.Hash)
 	fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
@@ -226,6 +227,7 @@ func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) []Transaction {
 	if err != nil {
 		panic(err)
 	}
+	SortbyDate(txs)
 
 	// Use search function to see if transaction exist already
 	// If not, insert into cayley by finding the previous tx

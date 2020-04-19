@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -60,27 +61,31 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	fmt.Println(req.Tx)
 	fmt.Println(string(req.Tx))
 
-	// Detect the JSON format using [{"hash"
+	request := req.Tx
+	requestString := string(request)
+
+	// Detect the JSON format using [{"hash" prefix
 	// Otherwise, create a new key, value transaction
 
-	parts := bytes.Split(req.Tx, []byte("="))
-	subject, predicate, object, tag := parts[0][1:len(parts[0])-1], parts[1][1:len(parts[1])-1],
-		parts[2][1:len(parts[2])-1], parts[3][1:len(parts[3])-1]
-
-	if len(subject) == 0 {
-		subject = nil
+	if strings.HasPrefix(requestString, "[{\"hash\"") {
+		// Is JSON
+		app.InsertFromJSON(request)
+	} else {
+		// <key>=<value>
+		parts := bytes.Split(request, []byte("="))
+		key, value := parts[0][1:len(parts[0])-1], parts[1][1:len(parts[1])-1]
+		fmt.Println("New Transaction with " + string(key) + " " + string(value))
+		if (len(key) == 0) || (len(value) == 0) {
+			// Failed
+			return abcitypes.ResponseDeliverTx{Code: 1}
+		}
+		newTx := NewTransaction(key, value, latestTransaction.Hash)
+		err := app.Insert(newTx, (*latestTransaction))
+		if err != nil {
+			// Failed
+			return abcitypes.ResponseDeliverTx{Code: 1}
+		}
 	}
-	if len(predicate) == 0 {
-		predicate = nil
-	}
-	if len(object) == 0 {
-		object = nil
-	}
-	if len(tag) == 0 {
-		tag = nil
-	}
-
-	app.currentBatch = quad.Make(string(subject), string(predicate), string(object), string(tag))
 
 	return abcitypes.ResponseDeliverTx{Code: 0}
 }
@@ -123,6 +128,7 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 	} else if string(reqQuery.Path) == "returnAll" {
 
 		txs := app.ReturnAll()
+		SortbyDate(txs)
 		result := ReturnJSON(txs)
 
 		resQuery.Value = []byte(result)
@@ -131,18 +137,24 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 		if string(reqQuery.Data) == "" {
 			resQuery.Log = "Error: Empty search string"
 		} else {
-			// TODO: Find transacton based on hash
+			// Find transacton based on hash
 			fmt.Println(reqQuery.Data)
 			fmt.Println(string(reqQuery.Data))
+
+			hash, err := hex.DecodeString(string(reqQuery.Data))
+			if err != nil {
+				resQuery.Log = "Error: Cannot convert Hash"
+			}
+			tx := app.Search(hash)
+			var txs []Transaction
+			txs = append(txs, (*tx))
+			out := ReturnJSON(txs)
+			resQuery.Value = []byte(out)
 		}
-	} else if string(reqQuery.Path) == "insertJSON" {
-		if string(reqQuery.Data) == "" {
-			resQuery.Log = "Error: Empty JSON string"
-		} else {
-			// TODO: Convert string to txs and insert
-			fmt.Println(reqQuery.Data)
-			fmt.Println(string(reqQuery.Data))
-		}
+	} else if string(reqQuery.Path) == "returnHash" {
+		txs := app.ReturnAll()
+		hash := SortAndHash(txs)
+		resQuery.Value = hash
 	}
 	return
 }
