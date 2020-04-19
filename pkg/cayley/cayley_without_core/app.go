@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
@@ -44,7 +43,7 @@ func (app *CayleyApplication) SetOption(req abcitypes.RequestSetOption) abcitype
 // DeliverTx Tendermint ABCI
 func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 
-	code := app.isValid(req.Tx)
+	//code := app.isValid(req.Tx)
 
 	/*
 		Transaction can also be disabled at this point, before they get delivered
@@ -52,9 +51,14 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 
-	if code != 0 {
-		return abcitypes.ResponseDeliverTx{Code: code}
-	}
+	/*
+		if code != 0 {
+			return abcitypes.ResponseDeliverTx{Code: code}
+		}
+	*/
+
+	fmt.Println(req.Tx)
+	fmt.Println(string(req.Tx))
 
 	// Detect the JSON format using [{"hash"
 	// Otherwise, create a new key, value transaction
@@ -92,8 +96,8 @@ func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 		return abcitypes.ResponseCheckTx{Code: 23, GasWanted: 1}
 	}
 
-	code := app.isValid(req.Tx)
-	return abcitypes.ResponseCheckTx{Code: code, GasWanted: 1}
+	//code := app.isValid(req.Tx)
+	return abcitypes.ResponseCheckTx{Code: 0, GasWanted: 1}
 }
 
 // Commit Tendermint ABCI
@@ -116,70 +120,30 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 		transactionsEnabled = true
 		resQuery.Log = "Incoming Transactions are enabled."
 		fmt.Println("Incoming Transactions are enabled.")
-	} else if (string(reqQuery.Path) == "find") || (string(reqQuery.Path) == "returnAll") {
-		//<subject>=<predicate> returns object
+	} else if string(reqQuery.Path) == "returnAll" {
 
-		var p *cayley.Path
+		txs := app.ReturnAll()
+		result := ReturnJSON(txs)
 
-		// Return all case
-		if string(reqQuery.Path) == "returnAll" {
-			p = cayley.StartPath(app.db)
-		} else {
-			parts := bytes.Split(reqQuery.Data, []byte("="))
-			// Check format
-			if len(parts) != 2 {
-				return
-			}
-			for i := 0; i < 2; i++ {
-				if string(parts[i][0]) != "<" || string(parts[i][len(parts[i])-1]) != ">" {
-					fmt.Println("Malformed")
-					return
-				}
-			}
-
-			subject := parts[0][1 : len(parts[0])-1]
-			predicate := parts[1][1 : len(parts[1])-1]
-			p = cayley.StartPath(app.db, quad.String(subject)).Out(quad.String(predicate))
-		}
-
-		ctx := context.TODO()
-		// Now we get an iterator for the path and optimize it.
-		// The second return is if it was optimized, but we don't care for now.
-		it, _ := p.BuildIterator().Optimize()
-
-		// remember to cleanup after yourself
-		defer it.Close()
-
-		result := ""
-
-		/* TRY THIS
-		iterator := app.db.QuadsAllIterator()
-		defer iterator.Close()
-		for iterator.Next(ctx) {
-			token := iterator.Result()    // get a ref to a node (backend-specific)
-			value := app.db.NameOf(token) // get the value in the node (RDF)
-			nativeValue := quad.NativeOf(value)
-			tx := nativeValue.(Transaction)
-			tx.Print()
-		}
-		*/
-
-		// While we have items
-		for it.Next(ctx) {
-			token := it.Result()                // get a ref to a node (backend-specific)
-			value := app.db.NameOf(token)       // get the value in the node (RDF)
-			nativeValue := quad.NativeOf(value) // convert value to normal Go type
-
-			fmt.Println(nativeValue) // print it!
-			result += string(nativeValue.(string))
-			result += ";"
-		}
-		if err := it.Err(); err != nil {
-			log.Fatalln(err)
-		}
 		resQuery.Value = []byte(result)
+		resQuery.Log = "Returned all Transaction sorted (oldest first)"
+	} else if string(reqQuery.Path) == "find" {
+		if string(reqQuery.Data) == "" {
+			resQuery.Log = "Error: Empty search string"
+		} else {
+			// TODO: Find transacton based on hash
+			fmt.Println(reqQuery.Data)
+			fmt.Println(string(reqQuery.Data))
+		}
+	} else if string(reqQuery.Path) == "insertJSON" {
+		if string(reqQuery.Data) == "" {
+			resQuery.Log = "Error: Empty JSON string"
+		} else {
+			// TODO: Convert string to txs and insert
+			fmt.Println(reqQuery.Data)
+			fmt.Println(string(reqQuery.Data))
+		}
 	}
-
 	return
 }
 
@@ -202,6 +166,7 @@ func (app *CayleyApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.
 	return abcitypes.ResponseEndBlock{}
 }
 
+/*
 func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
 
 	// check format
@@ -221,6 +186,7 @@ func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
 
 	return 0
 }
+*/
 
 // ReturnAll returns every transactions
 func (app *CayleyApplication) ReturnAll() []Transaction {

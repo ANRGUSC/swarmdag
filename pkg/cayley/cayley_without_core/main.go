@@ -36,6 +36,10 @@ type Transaction struct {
 
 var socketAddr string
 
+// IMPORTANT: Finding the latest transction on a restart of the node might be difficult
+// We would need to find the longest chain and point to latest transaction of it
+var latestTransaction *Transaction = nil
+
 func init() {
 	flag.StringVar(&socketAddr, "socket-addr", "unix://cayley.sock", "Unix domain socket address")
 	schema.RegisterType("Transaction", Transaction{})
@@ -68,15 +72,18 @@ func main() {
 
 	// Create and add the Genesis Block
 	// It will always have the same hash b/c it does not include a timestamp
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, 0)
 	genesis := Transaction{
 		Hash:      []byte{},
 		PrevHash:  []byte{},
-		Timestamp: []byte{},
+		Timestamp: b,
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),
 	}
 	genesis.setHash()
 	app.db.AddQuad(quad.Make(genesis, nil, nil, nil))
+	latestTransaction = (&genesis)
 	genesis.Print()
 
 	//Add two test blocks after the Genesis
@@ -95,7 +102,7 @@ func main() {
 
 	txs := app.ReturnAll()
 
-	Sort(txs)
+	SortbyHash(txs)
 	PrintAll(txs)
 	fmt.Printf("Total Hash: %x\n", SortAndHash(txs))
 
@@ -123,7 +130,7 @@ func main() {
 }
 
 // Insert adds a new transction to the DAG
-func (app *CayleyApplication) Insert(tx interface{}, prevTx interface{}) error {
+func (app *CayleyApplication) Insert(tx Transaction, prevTx Transaction) error {
 	/*
 		qw := graph.NewWriter(db)
 		defer qw.Close() // don't forget to close a writer; it has some internal buffering
@@ -131,6 +138,7 @@ func (app *CayleyApplication) Insert(tx interface{}, prevTx interface{}) error {
 		return err
 	*/
 	err := app.db.AddQuad(quad.Make(tx, "follows", prevTx, nil))
+	latestTransaction = (&tx)
 	return err
 }
 
@@ -174,17 +182,24 @@ func PrintAll(txs []Transaction) {
 	}
 }
 
-// Sort sorts the array based on the hash on the transactions
-func Sort(txs []Transaction) {
+// SortbyHash sorts the array based on the hash on the transactions
+func SortbyHash(txs []Transaction) {
 	sort.Slice(txs, func(i, j int) bool {
 		//return string(txs[i].Hash) < string(txs[j].Hash)
 		return fmt.Sprintf("%x", txs[i].Hash) < fmt.Sprintf("%x", txs[j].Hash)
 	})
 }
 
+// SortbyDate sorts the array based on the date on the transactions (oldest first)
+func SortbyDate(txs []Transaction) {
+	sort.Slice(txs, func(i, j int) bool {
+		return int64(binary.LittleEndian.Uint64(txs[i].Timestamp)) < int64(binary.LittleEndian.Uint64(txs[j].Timestamp))
+	})
+}
+
 //SortAndHash sorts the array and returns the Hash
 func SortAndHash(txs []Transaction) []byte {
-	Sort(txs)
+	SortbyDate(txs)
 	var buffer bytes.Buffer
 	for i := range txs {
 		buffer.Write(txs[i].Hash)
@@ -195,7 +210,7 @@ func SortAndHash(txs []Transaction) []byte {
 
 // ReturnJSON return the JSON representation of all sorted transactions
 func ReturnJSON(txs []Transaction) string {
-	Sort(txs)
+	SortbyDate(txs)
 	json, err := json.Marshal(txs)
 	if err != nil {
 		panic(err)
