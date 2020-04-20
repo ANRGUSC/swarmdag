@@ -54,8 +54,8 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 
-	fmt.Println(req.Tx)
-	fmt.Println(string(req.Tx))
+	//fmt.Println(req.Tx)
+	//fmt.Println(string(req.Tx))
 
 	request := req.Tx
 	requestString := string(request)
@@ -63,10 +63,18 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	// Detect the JSON format using [{"hash" prefix
 	// Otherwise, create a new key, value transaction
 
-	if strings.HasPrefix(requestString, "[{\"hash\"") {
+	if strings.HasPrefix(requestString, "[{") {
 		// Is JSON
-		app.InsertFromJSON(request)
+		fmt.Println("JSON")
+		//fmt.Println(request)
+		fmt.Println(requestString)
+		replacedString := strings.Replace(requestString, " ", "+", -1)
+		app.InsertFromJSON([]byte(replacedString))
 	} else {
+		code := app.isValid(req.Tx)
+		if code != 0 {
+			return abcitypes.ResponseDeliverTx{Code: 1}
+		}
 		// <key>=<value>
 		parts := bytes.Split(request, []byte("="))
 		key, value := parts[0][1:len(parts[0])-1], parts[1][1:len(parts[1])-1]
@@ -93,11 +101,22 @@ func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 		Disable new incoming transactions while tendermint is running by returning
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
+
+	//fmt.Println(req.Tx)
+	//fmt.Println(string(req.Tx))
+
 	if transactionsEnabled == false {
 		fmt.Println("Incoming transactions are currently disabled")
 		return abcitypes.ResponseCheckTx{Code: 23, GasWanted: 1}
 	}
-
+	if strings.HasPrefix(string(req.Tx), "[{") {
+		// Is JSON
+		return abcitypes.ResponseCheckTx{Code: 0, GasWanted: 1}
+	}
+	code := app.isValid(req.Tx)
+	if code != 0 {
+		return abcitypes.ResponseCheckTx{Code: 1}
+	}
 	return abcitypes.ResponseCheckTx{Code: 0, GasWanted: 1}
 }
 
@@ -126,10 +145,11 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 		txs := app.ReturnAll()
 		SortbyDate(txs)
 		result := ReturnJSON(txs)
+		fmt.Println(result)
 
 		resQuery.Value = []byte(result)
 		resQuery.Log = "Returned all Transaction sorted (oldest first)"
-	} else if string(reqQuery.Path) == "find" {
+	} else if string(reqQuery.Path) == "search" {
 		if string(reqQuery.Data) == "" {
 			resQuery.Log = "Error: Empty search string"
 		} else {
@@ -150,13 +170,16 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 			var txs []Transaction
 			txs = append(txs, (*tx))
 			out := ReturnJSON(txs)
+			fmt.Println(out)
 			resQuery.Value = []byte(out)
+			resQuery.Log = "Found Transaction"
 		}
 	} else if string(reqQuery.Path) == "returnHash" {
 		txs := app.ReturnAll()
 		hash := SortAndHash(txs)
-		fmt.Printf("Hash: %x\n", hash)
-		resQuery.Value = []byte(fmt.Sprintf("%x", hash))
+		fmt.Println(base64.StdEncoding.EncodeToString(hash))
+		resQuery.Value = []byte(base64.StdEncoding.EncodeToString(hash))
+		resQuery.Log = "Returned base64 encoded hash"
 	}
 	return
 }
@@ -328,6 +351,25 @@ func (app *CayleyApplication) Search(hash []byte) *Transaction {
 		}
 	}
 	return nil
+}
+func (app *CayleyApplication) isValid(tx []byte) (code uint32) {
+
+	// check format
+	parts := bytes.Split(tx, []byte("="))
+	if len(parts) != 2 {
+		fmt.Println("Malformed")
+		return 1
+	}
+	for i := 0; i < 2; i++ {
+		if string(parts[i][0]) != "<" || string(parts[i][len(parts[i])-1]) != ">" {
+			fmt.Println("Malformed")
+			return 1
+		}
+	}
+
+	// If desired, check if the same key=value already exists
+
+	return 0
 }
 
 // Helper Functions

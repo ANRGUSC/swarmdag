@@ -138,12 +138,6 @@ func main() {
 
 // Insert adds a new transction to the DAG
 func (app *CayleyApplication) Insert(tx Transaction, prevTx Transaction) error {
-	/*
-		qw := graph.NewWriter(db)
-		defer qw.Close() // don't forget to close a writer; it has some internal buffering
-		_, err := schema.WriteAsQuads(qw, tx)
-		return err
-	*/
 	err := app.db.AddQuad(quad.Make(tx, "follows", prevTx, nil))
 	latestTransaction = (&tx)
 	return err
@@ -177,7 +171,7 @@ func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Printf("Hash: %x\n", t.Hash)
-	fmt.Println(t.Hash)
+	//fmt.Println(t.Hash)
 	fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
