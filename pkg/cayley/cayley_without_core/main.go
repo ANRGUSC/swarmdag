@@ -86,6 +86,8 @@ func main() {
 	latestTransaction = (&genesis)
 	genesis.Print()
 
+	//Test start
+
 	//Add two test blocks after the Genesis
 	tx1 := NewTransaction([]byte("tx1"), []byte("test1"), genesis.Hash)
 	tx2 := NewTransaction([]byte("tx2"), []byte("test2"), tx1.Hash)
@@ -102,14 +104,19 @@ func main() {
 
 	txs := app.ReturnAll()
 
+	tx3 := NewTransaction([]byte("tx3"), []byte("test3"), tx2.Hash)
+	txs = append(txs, tx3)
+
 	SortbyHash(txs)
 	PrintAll(txs)
 	fmt.Printf("Total Hash: %x\n", SortAndHash(txs))
 
 	json := ReturnJSON(txs)
 	fmt.Println(json)
-	insertedTx := app.InsertFromJSON([]byte(json))
-	PrintAll(insertedTx)
+	app.InsertFromJSON([]byte(json))
+	PrintAll(app.ReturnAll())
+
+	// Test end
 
 	flag.Parse()
 
@@ -220,7 +227,7 @@ func ReturnJSON(txs []Transaction) string {
 }
 
 // InsertFromJSON inserts new transaction in the JSON into the graph
-func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) []Transaction {
+func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) {
 	// convert the JSON to structs
 	var txs []Transaction
 	err := json.Unmarshal(jsonInput, &txs)
@@ -246,8 +253,9 @@ func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) []Transaction {
 			}
 
 			app.Insert(txs[i], (*prevTx))
+			fmt.Println("Transaction inserted")
+		} else {
+			fmt.Println("Transaction exists")
 		}
-		fmt.Println("Transaction exists")
 	}
-	return txs
 }
