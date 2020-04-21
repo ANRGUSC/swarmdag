@@ -169,9 +169,9 @@ func (t *Transaction) setHash() {
 func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
-	fmt.Printf("Hash: %x\n", t.Hash)
+	//fmt.Printf("Hash: %x\n", t.Hash)
 	fmt.Println("Hash: " + base64.StdEncoding.EncodeToString(t.Hash))
-	fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
+	//fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
 	fmt.Println("Prev. Hash: " + base64.StdEncoding.EncodeToString(t.PrevHash))
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
