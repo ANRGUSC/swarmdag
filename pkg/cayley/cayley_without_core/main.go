@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/sha512"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"flag"
@@ -37,6 +37,7 @@ type Transaction struct {
 var socketAddr string
 
 // IMPORTANT: Finding the latest transction on a restart of the node might be difficult
+// if there are multiple chains. We probably want to append to the longest chain.
 // We would need to find the longest chain and point to latest transaction of it
 var latestTransaction *Transaction = nil
 
@@ -71,7 +72,7 @@ func main() {
 	app := NewCayleyApplication(db)
 
 	// Create and add the Genesis Block
-	// It will always have the same hash b/c it does not include a timestamp
+	// It will always have the same hash b/c timestamp is always 0
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, 0)
 	genesis := Transaction{
@@ -153,16 +154,14 @@ func NewTransaction(key []byte, value []byte, prevHash []byte) Transaction {
 }
 
 //RestoreTransaction restores a transaction fetched from the DAG
-func RestoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
+func restoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
 	transaction := Transaction{hash, prevHash, timestamp, key, value}
 	return transaction
 }
 
 func (t *Transaction) setHash() {
-	//timestamp := []byte(strconv.FormatInt(t.Timestamp, 10))
 	headers := bytes.Join([][]byte{t.PrevHash, t.Key, t.Value, t.Timestamp}, []byte{})
-	hash := sha512.Sum512(headers)
-
+	hash := sha256.Sum256(headers)
 	t.Hash = hash[:]
 }
 
@@ -171,8 +170,9 @@ func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Printf("Hash: %x\n", t.Hash)
-	//fmt.Println(t.Hash)
+	fmt.Println("Hash: " + base64.StdEncoding.EncodeToString(t.Hash))
 	fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
+	fmt.Println("Prev. Hash: " + base64.StdEncoding.EncodeToString(t.PrevHash))
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
 }
@@ -187,7 +187,6 @@ func PrintAll(txs []Transaction) {
 // SortbyHash sorts the array based on the hash on the transactions
 func SortbyHash(txs []Transaction) {
 	sort.Slice(txs, func(i, j int) bool {
-		//return string(txs[i].Hash) < string(txs[j].Hash)
 		return fmt.Sprintf("%x", txs[i].Hash) < fmt.Sprintf("%x", txs[j].Hash)
 	})
 }

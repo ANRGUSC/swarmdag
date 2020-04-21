@@ -63,11 +63,12 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	// Detect the JSON format using [{"hash" prefix
 	// Otherwise, create a new key, value transaction
 
-	if strings.HasPrefix(requestString, "[{") {
+	if strings.HasPrefix(requestString, "[{") && strings.HasSuffix(requestString, "}]") {
 		// Is JSON
 		fmt.Println("JSON")
 		//fmt.Println(request)
-		fmt.Println(requestString)
+		//fmt.Println(requestString)
+		// Tendermint replaces + with a space
 		replacedString := strings.Replace(requestString, " ", "+", -1)
 		app.InsertFromJSON([]byte(replacedString))
 	} else {
@@ -109,7 +110,7 @@ func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 		fmt.Println("Incoming transactions are currently disabled")
 		return abcitypes.ResponseCheckTx{Code: 23, GasWanted: 1}
 	}
-	if strings.HasPrefix(string(req.Tx), "[{") {
+	if strings.HasPrefix(string(req.Tx), "[{") && strings.HasSuffix(string(req.Tx), "}]") {
 		// Is JSON
 		return abcitypes.ResponseCheckTx{Code: 0, GasWanted: 1}
 	}
@@ -143,6 +144,7 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 	} else if string(reqQuery.Path) == "returnAll" {
 
 		txs := app.ReturnAll()
+		PrintAll(txs)
 		SortbyDate(txs)
 		result := ReturnJSON(txs)
 		fmt.Println(result)
@@ -152,32 +154,39 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 	} else if string(reqQuery.Path) == "search" {
 		if string(reqQuery.Data) == "" {
 			resQuery.Log = "Error: Empty search string"
-		} else {
-			// Find transacton based on hash
-			//fmt.Println(reqQuery.Data)
-			//fmt.Println(string(reqQuery.Data))
-			query := string(reqQuery.Data)
-			req := strings.Replace(query, " ", "+", -1)
-			hash, err := base64.StdEncoding.DecodeString(req)
-			if err != nil {
-				resQuery.Log = "Error: Cannot convert Hash"
-			}
-			tx := app.Search(hash)
-			if tx == nil {
-				resQuery.Log = "Error: Cannot find Transaction"
-			}
-			tx.Print()
-			var txs []Transaction
-			txs = append(txs, (*tx))
-			out := ReturnJSON(txs)
-			fmt.Println(out)
-			resQuery.Value = []byte(out)
-			resQuery.Log = "Found Transaction"
+			return
 		}
+		// Find transacton based on hash
+		//fmt.Println(reqQuery.Data)
+		//fmt.Println(string(reqQuery.Data))
+		query := string(reqQuery.Data)
+		// Tendermint replaces + with a space
+		req := strings.Replace(query, " ", "+", -1)
+		hash, err := base64.StdEncoding.DecodeString(req)
+		if err != nil {
+			resQuery.Log = "Error: Cannot convert Hash"
+			return
+		}
+		tx := app.Search(hash)
+		if tx == nil {
+			resQuery.Log = "Error: Cannot find Transaction"
+			return
+		}
+		tx.Print()
+		var txs []Transaction
+		txs = append(txs, (*tx))
+		out := ReturnJSON(txs)
+		fmt.Println(out)
+		resQuery.Value = []byte(out)
+		resQuery.Log = "Found Transaction"
 	} else if string(reqQuery.Path) == "returnHash" {
 		txs := app.ReturnAll()
 		hash := SortAndHash(txs)
+		PrintAll(txs)
 		fmt.Println(base64.StdEncoding.EncodeToString(hash))
+		//var out []byte
+		//base64.StdEncoding.Encode(out, hash)
+		//resQuery.Value = out
 		resQuery.Value = []byte(base64.StdEncoding.EncodeToString(hash))
 		resQuery.Log = "Returned base64 encoded hash"
 	}
@@ -284,7 +293,7 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 			valV, next := extractByteArray(str)
 			str = str[next:]
 
-			newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
+			newTx := restoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
 			//newTx.Print()
 			txs = append(txs, newTx)
 
@@ -299,7 +308,7 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 		}
 	}
 
-	PrintAll(txs)
+	//PrintAll(txs)
 
 	return txs
 }
@@ -345,7 +354,8 @@ func (app *CayleyApplication) Search(hash []byte) *Transaction {
 				valV, next := extractByteArray(str)
 				str = str[next:]
 
-				newTx := RestoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
+				newTx := restoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
+				//newTx.Print()
 				return &newTx
 			}
 		}
