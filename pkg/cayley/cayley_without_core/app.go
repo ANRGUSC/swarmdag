@@ -54,9 +54,6 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 
-	//fmt.Println(req.Tx)
-	//fmt.Println(string(req.Tx))
-
 	request := req.Tx
 	requestString := string(request)
 
@@ -66,8 +63,6 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	if strings.HasPrefix(requestString, "[{") && strings.HasSuffix(requestString, "}]") {
 		// Is JSON
 		fmt.Println("JSON")
-		//fmt.Println(request)
-		//fmt.Println(requestString)
 		// Tendermint replaces + with a space
 		replacedString := strings.Replace(requestString, " ", "+", -1)
 		app.InsertFromJSON([]byte(replacedString))
@@ -102,9 +97,6 @@ func (app *CayleyApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 		Disable new incoming transactions while tendermint is running by returning
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
-
-	//fmt.Println(req.Tx)
-	//fmt.Println(string(req.Tx))
 
 	if transactionsEnabled == false {
 		fmt.Println("Incoming transactions are currently disabled")
@@ -157,8 +149,6 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 			return
 		}
 		// Find transacton based on hash
-		//fmt.Println(reqQuery.Data)
-		//fmt.Println(string(reqQuery.Data))
 		query := string(reqQuery.Data)
 		// Tendermint replaces + with a space
 		req := strings.Replace(query, " ", "+", -1)
@@ -184,9 +174,6 @@ func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 		hash := SortAndHash(txs)
 		PrintAll(txs)
 		fmt.Println(base64.StdEncoding.EncodeToString(hash))
-		//var out []byte
-		//base64.StdEncoding.Encode(out, hash)
-		//resQuery.Value = out
 		resQuery.Value = []byte(base64.StdEncoding.EncodeToString(hash))
 		resQuery.Log = "Returned base64 encoded hash"
 	}
@@ -228,54 +215,20 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 	// remember to cleanup after yourself
 	defer it.Close()
 
-	//result := ""
-	/*
-		iterator := app.db.QuadsAllIterator()
-		defer iterator.Close()
-		for iterator.Next(ctx) {
-
-				token := iterator.Result()    // get a ref to a node (backend-specific)
-				value := app.db.NameOf(token) // get the value in the node (RDF)
-				nativeValue := quad.NativeOf(value)
-				tx := nativeValue.(Transaction)
-				fmt.Println(tx)
-				tx.Print()
-
-			fmt.Println(app.db.Quad(it.Result()))
-		}
-
-
-			err := schema.LoadTo(ctx, app.db, &txs)
-			if err != nil {
-				panic(err)
-			}
-
-			for _, t := range txs {
-				t.Print()
-			}
-	*/
 	var txs []Transaction
 	// While we have items
 	for it.Next(ctx) {
 		token := it.Result()          // get a ref to a node (backend-specific)
 		value := app.db.NameOf(token) // get the value in the node (RDF)
-		//fmt.Print("Type is: ")
-		//fmt.Println(reflect.TypeOf(value))
-		//go build
-		//fmt.Println(value)
+
 		nativeValue := quad.NativeOf(value) // convert value to normal Go type
 
 		if nativeValue != "follows" {
-			//fmt.Println(nativeValue) // print it!
-			//fmt.Print("Type is: ")
-			//fmt.Println(reflect.TypeOf(nativeValue))
 
 			str, okay := nativeValue.(string)
 			if okay == false {
 				fmt.Println("Could not convert to string")
-			} else {
-				//fmt.Println("okay")
-				//fmt.Println(str)
+				continue
 			}
 
 			valH, next := extractByteArray(str)
@@ -294,21 +247,10 @@ func (app *CayleyApplication) ReturnAll() []Transaction {
 			str = str[next:]
 
 			newTx := restoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
-			//newTx.Print()
 			txs = append(txs, newTx)
 
-			/*
-				t, ok := nativeValue.(Transaction)
-				if ok == true {
-					fmt.Println("ok")
-					t.Print()
-				}
-				txs = append(txs, t)
-			*/
 		}
 	}
-
-	//PrintAll(txs)
 
 	return txs
 }
@@ -335,6 +277,7 @@ func (app *CayleyApplication) Search(hash []byte) *Transaction {
 			str, okay := nativeValue.(string)
 			if okay == false {
 				fmt.Println("Could not convert to string")
+				continue
 			}
 
 			valH, next := extractByteArray(str)
@@ -355,7 +298,6 @@ func (app *CayleyApplication) Search(hash []byte) *Transaction {
 				str = str[next:]
 
 				newTx := restoreTransaction(stringToByte(valH), stringToByte(valP), stringToByte(valT), stringToByte(valK), stringToByte(valV))
-				//newTx.Print()
 				return &newTx
 			}
 		}
@@ -403,6 +345,5 @@ func extractByteArray(str string) (string, int) {
 	startIndex := strings.Index(str, "[")
 	endIndex := strings.Index(str, "]")
 	value := str[startIndex : endIndex+1]
-	//fmt.Println("Value: " + value)
 	return value, (endIndex + 1)
 }

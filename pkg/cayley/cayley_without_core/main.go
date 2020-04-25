@@ -42,7 +42,8 @@ var socketAddr string
 var latestTransaction *Transaction = nil
 
 func init() {
-	flag.StringVar(&socketAddr, "socket-addr", "unix://cayley.sock", "Unix domain socket address")
+	//flag.StringVar(&socketAddr, "socket-addr", "unix://cayley.sock", "Unix domain socket address")
+	flag.StringVar(&socketAddr, "socket-addr", "127.0.0.1:26658", "Unix domain socket address")
 	schema.RegisterType("Transaction", Transaction{})
 }
 
@@ -169,9 +170,7 @@ func (t *Transaction) setHash() {
 func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
-	//fmt.Printf("Hash: %x\n", t.Hash)
 	fmt.Println("Hash: " + base64.StdEncoding.EncodeToString(t.Hash))
-	//fmt.Printf("Prev. Hash: %x\n", t.PrevHash)
 	fmt.Println("Prev. Hash: " + base64.StdEncoding.EncodeToString(t.PrevHash))
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
@@ -187,7 +186,7 @@ func PrintAll(txs []Transaction) {
 // SortbyHash sorts the array based on the hash on the transactions
 func SortbyHash(txs []Transaction) {
 	sort.Slice(txs, func(i, j int) bool {
-		return fmt.Sprintf("%x", txs[i].Hash) < fmt.Sprintf("%x", txs[j].Hash)
+		return base64.StdEncoding.EncodeToString(txs[i].Hash) < base64.StdEncoding.EncodeToString(txs[j].Hash)
 	})
 }
 
@@ -239,10 +238,11 @@ func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) {
 			prevTx := app.Search(txs[i].PrevHash)
 
 			if prevTx == nil {
-				panic("TODO: Could not insert b/c previous transaction is not in the database")
+				fmt.Println("TODO: Could not insert b/c previous transaction is not in the database. Skipping this Tx")
 				// I think we can just insert the tranaction with prev. Tx as nil
 				// Would create an unconnected side chain which will become connected later at some point
 				// The graph iterator will still find this unconnected transaction
+				continue
 			}
 
 			app.Insert(txs[i], (*prevTx))

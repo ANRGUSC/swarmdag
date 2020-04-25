@@ -36,9 +36,8 @@ curl -s 'localhost:26657/broadcast_tx_commit?tx="<key>=<value>"'
 
 Adding a new values using JSON. The JSON String **MUST** be base64 encoded beforehand.
 ```
-curl --data-binary '{"jsonrpc":"2.0","id":"","method":"broadcast_tx_commit","params": {"tx": "(REPLACE WITH BASE64 JSON STRING"}}' -H 'content-type:application/json;' http://localhost:26657
+curl --data-binary '{"jsonrpc":"2.0","id":"","method":"broadcast_tx_commit","params": {"tx": "(REPLACE WITH BASE64 JSON STRING)"}}' -H 'content-type:application/json;' http://localhost:26657
 ```
-
 
 Returns all the stored data as a JSON:
 ```
