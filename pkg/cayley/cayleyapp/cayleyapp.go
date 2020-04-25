@@ -15,7 +15,6 @@ import (
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 
-	//. "github.com/ANRGUSC/swarmdag/cmd/cayley/main"
 	"github.com/cayleygraph/cayley"
 	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
 	"github.com/cayleygraph/quad"

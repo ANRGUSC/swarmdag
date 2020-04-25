@@ -23,8 +23,7 @@ import (
 var socketAddr string
 
 func init() {
-	flag.StringVar(&socketAddr, "socket-addr", "127.0.0.1:26658",
-		"Unix domain socket address")
+	flag.StringVar(&socketAddr, "socket-addr", "127.0.0.1:26658", "Unix domain socket address")
 	schema.RegisterType("Transaction", Transaction{})
 }
 
