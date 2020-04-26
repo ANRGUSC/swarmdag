@@ -76,12 +76,12 @@ func (app *CayleyApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 	request := req.Tx
 	requestString := string(request)
 
-	// Detect the JSON format using [{"hash" prefix
+	// Detect the JSON format using "[{"" prefix and "}]" suffix
 	// Otherwise, create a new key, value transaction
 
 	if strings.HasPrefix(requestString, "[{") && strings.HasSuffix(requestString, "}]") {
 		// Is JSON
-		fmt.Println("JSON")
+		fmt.Println("JSON received")
 		// Tendermint replaces + with a space
 		replacedString := strings.Replace(requestString, " ", "+", -1)
 		app.InsertFromJSON([]byte(replacedString))
@@ -141,9 +141,6 @@ func (app *CayleyApplication) Commit() abcitypes.ResponseCommit {
 
 // Query Tendermint ABCI
 func (app *CayleyApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
-	// Debug: See if data and path work
-	fmt.Println("Request Query: Data=" + string(reqQuery.Data) + " Path=" + reqQuery.Path)
-
 	if string(reqQuery.Path) == "disableTx" {
 		transactionsEnabled = false
 		resQuery.Log = "Incoming Transactions are disabled."
