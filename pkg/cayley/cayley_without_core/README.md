@@ -1,4 +1,4 @@
-## Caley Tendermint
+## Cayley Tendermint
 
 ### Installation
 
@@ -12,56 +12,57 @@ go build
 
 Start tendermint and execute the created executable using:
 ```
-TMHOME="/tmp/example" tendermint init
-./cayley -config "/tmp/example/config/config.toml"
+tendermint node --proxy_app=127.0.0.1:26658
+./cayley
 ```
 
 
 ### Troubleshooting
 
-A restart of tendermint might fail. A reset using the following commands
+A restart of tendermint might fail. A reset using the following command
 fixes this. All data in the ledger will be lost.
 ```
-TMHOME="/tmp/example" tendermint unsafe_reset_all
-rm -rf /tmp/example
+tendermint unsafe_reset_all
 ```
 
 ### Usage
 
 Info:
 Values need to be surrounded with **< >**  
-Example: subject = city, predicate = is, object = losangeles  
-Leaving fields empty will set them to nil  
+
+Add a new transaction with a key value pair
 ```
-curl -s 'localhost:26657broadcast_tx_commit?tx="<city>=<is>=<losangeles>=<>"'
+curl -s 'localhost:26657/broadcast_tx_commit?tx="<key>=<value>"'
 ```
 
-Adding a new values:
+Adding a new values using JSON. The JSON String **MUST** be base64 encoded beforehand.
 ```
-curl -s 'localhost:26657broadcast_tx_commit?tx="<subject>=<predicate>=<object>=<tag>"'
+curl --data-binary '{"jsonrpc":"2.0","id":"","method":"broadcast_tx_commit","params": {"tx": "(REPLACE WITH BASE64 JSON STRING)"}}' -H 'content-type:application/json;' http://localhost:26657
 ```
 
-
-Returns all the stored data:
+All queries will return all data semicolon-seperated encoded in **base64** as the value in response.
+Returns all the stored data as a JSON:
 ```
 curl -s 'localhost:26657/abci_query?data="returnAll"'
 ```
-Returns all values matching the subject and predicate
+Returns Transaction matching the Hash (also base64, exactly like in the JSON returned by the *returnAll* call)
 ```
-curl -s 'localhost:26657abci_query?data="<subject>=<predicate>"'
+curl -s 'localhost:26657abci_query?path="search"&data="(HASH TO SEARCH FOR)"'
 ```
-All queries will return all data semicolon-seperated encoded in **base64**
-as the value in response.
+Return the hash of all transactions
+```
+curl -s 'localhost:26657/abci_query?path="returnHash"'
+```
 
 
 Enabling incmoing transactions (enabled by default on start):
 ```
-curl -s 'localhost:26657/abci_query?data="enableTx"'
+curl -s 'localhost:26657/abci_query?path="enableTx"'
 ```
 
 Disable incoming transactions:
 ```
-curl -s 'localhost:26657/abci_query?data="disableTx"'
+curl -s 'localhost:26657/abci_query?path="disableTx"'
 ```
 
 ### DOCKER
