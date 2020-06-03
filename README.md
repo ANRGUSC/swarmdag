@@ -73,6 +73,9 @@ Launch Grafana locally via docker. The default username:password is `admin:admin
 
     docker run -d --name=grafana -p 3000:3000 grafana/grafana
 
+Go to `grafana-tools/` for instructions on how to import template dashboard and
+datasources.
+
 The next steps must be done exactly to match the dashboard config saved in this
 repository. Log into the grafana UI at `localhost:3000` and click on the gear 
 icon to go to Configuration->Data Sources. Add an InfluxDB datasource and set 

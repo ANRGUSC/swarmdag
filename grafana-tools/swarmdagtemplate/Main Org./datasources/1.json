@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "orgId": 1,
+  "name": "InfluxDB",
+  "type": "influxdb",
+  "typeLogoUrl": "",
+  "access": "direct",
+  "url": "http://localhost:8086",
+  "password": "",
+  "user": "",
+  "database": "mydb",
+  "basicAuth": false,
+  "basicAuthUser": "",
+  "basicAuthPassword": "",
+  "withCredentials": false,
+  "isDefault": true,
+  "jsonData": {
+    "httpMode": "GET"
+  },
+  "secureJsonFields": {},
+  "version": 1,
+  "readOnly": false
+}
