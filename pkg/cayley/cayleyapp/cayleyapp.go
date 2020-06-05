@@ -402,6 +402,8 @@ func SortbyDate(txs []Transaction) {
 
 //SortAndHash sorts the array and returns the Hash
 func SortAndHash(txs []Transaction) []byte {
+	// TODO: determine if this sort and hash will provide consistent results 
+	// across network
 	SortbyDate(txs)
 	var buffer bytes.Buffer
 	for i := range txs {
