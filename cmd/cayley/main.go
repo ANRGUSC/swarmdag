@@ -90,6 +90,8 @@ func main() {
 	txs = append(txs, tx3)
 
 	SortbyHash(txs)
+
+	fmt.Println("PrintAll():")
 	PrintAll(txs)
 	fmt.Printf("Total Hash: %x\n", SortAndHash(txs))
 
