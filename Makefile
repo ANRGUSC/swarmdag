@@ -1,5 +1,7 @@
 TENDERMINT_VER=0.33.2
 
+# TODO: cleanup cayleygraph db instances, clean up partition information.
+
 run-single-node-test:
 	# need sudo becuase Docker containers run as root
 	sudo rm -rf ./build/node* ./build/cayley.sock
@@ -11,8 +13,9 @@ push:
 	docker push "anrg/swarmdag"
 
 config-testnet:
-	sudo rm -rf ./build/node*
-	./build/tendermint testnet --v 4 --o ./build --populate-persistent-peers --starting-ip-address 192.167.10.2
+	rm -rf ./build/node*
+	rm -rf ./build/templates/node*
+	./build/tendermint testnet --v 4 --o ./build/templates --populate-persistent-peers --starting-ip-address 192.167.10.2
 
 update-wrapper:
 	@if [ ! -d ./build ]; then mkdir build/; fi
@@ -43,4 +46,4 @@ clean:
 	sudo rm -rf build/
 	docker-compose down
 
-.PHONY: build push
+.PHONY: build push config-testnet get-tendermint

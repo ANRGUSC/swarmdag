@@ -17,7 +17,7 @@ import (
 	abciserver "github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/libs/log"
 
-	. "github.com/ANRGUSC/swarmdag/pkg/cayley/cayleyapp"
+	. "github.com/ANRGUSC/swarmdag/cayley"
 )
 
 var socketAddr string
@@ -50,7 +50,7 @@ func main() {
 	}
 	defer db.Close()
 
-	app := NewCayleyApplication(db)
+	app := NewApplication(db)
 
 	// Create and add the Genesis Block
 	// It will always have the same hash b/c timestamp is always 0

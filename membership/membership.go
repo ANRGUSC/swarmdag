@@ -1,4 +1,4 @@
-package main
+package membership
 
 import (
 	"strconv"
@@ -16,6 +16,7 @@ import (
 	"github.com/ANRGUSC/swarmdag/pkg/monitor"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
+    tmrand "github.com/tendermint/tendermint/libs/rand"
 	// "github.com/hashicorp/memberlist"
 )
 
@@ -28,6 +29,10 @@ const (
 )
 
 var nmlistLock sync.RWMutex
+
+type MembershipManager interface {
+    GetMembershipID() string
+}
 
 type Config struct {
     nodeID                      int
@@ -44,7 +49,7 @@ type Config struct {
     majorityRatio   float32
 }
 
-type MembershipManager struct {
+type membershipManager struct {
     conf *Config
 
     ctx  context.Context
@@ -52,6 +57,7 @@ type MembershipManager struct {
     host host.Host
     notif *network.NotifyBundle
 
+    membershipID        string
     numConnections      int 
     neighborList        map[string]peer.ID
     membershipList      map[string]int64
@@ -66,7 +72,7 @@ type MembershipManager struct {
 
 func NewMembershipManager(conf *Config, ctx context.Context, 
                             host host.Host, psub *pubsub.PubSub, 
-                            log *logging.Logger) *MembershipManager{
+                            log *logging.Logger) MembershipManager {
 
     if conf.maxConnections == 0 {
         conf.maxConnections = 9999
@@ -104,7 +110,7 @@ func NewMembershipManager(conf *Config, ctx context.Context,
         conf.majorityRatio = 0.51
     }
 
-    mm := &MembershipManager {
+    mm := &membershipManager {
         conf:                       conf,
 
         ctx:                        ctx,
@@ -127,8 +133,25 @@ func NewMembershipManager(conf *Config, ctx context.Context,
     return mm
 }
 
+func (mm *membershipManager) GetMembershipID() string {
+    // return mm.membershipID
+    return tmrand.Str(6)
+}
 
-func (mm *MembershipManager) connectHandler(c network.Conn) {
+func (mm *membershipManager) GetNodeID() int {
+    // TODO: implement me
+    return 1
+}
+
+func (mm *membershipManager) AmLeader() bool {
+    // TODO
+    if mm.GetNodeID() == 0 {
+        return true
+    }
+    return false
+}
+
+func (mm *membershipManager) connectHandler(c network.Conn) {
     mm.log.Debug("rcvd remote conn. request from", c.RemotePeer())
 
     //TODO: this assumes that this node will accept all connection requests from
@@ -141,7 +164,7 @@ func (mm *MembershipManager) connectHandler(c network.Conn) {
     }
 }
 
-func (mm *MembershipManager) OnStart(peerChan chan peer.AddrInfo) {
+func (mm *membershipManager) OnStart(peerChan chan peer.AddrInfo) {
     //TODO: fast initialization at start
     mm.membershipList[mm.host.ID().String()] = time.Now().Unix()
     mm.membershipList["VIEW_ID"] = mm.viewID 
@@ -168,7 +191,7 @@ func validAddr(addr string) bool {
             addr != "PROPOSE" && addr != "VIEW_ID" && addr != "VOTE_TABLE")
 }
 
-func (mm *MembershipManager) mdnsQueryHandler(peerChan chan peer.AddrInfo) {
+func (mm *membershipManager) mdnsQueryHandler(peerChan chan peer.AddrInfo) {
     for {
         p := <-peerChan // block until a mdns query is received
         // mm.log.Debug("mDNS query from:", p)
@@ -200,7 +223,7 @@ func (mm *MembershipManager) mdnsQueryHandler(peerChan chan peer.AddrInfo) {
     }
 }
 
-func (mm *MembershipManager) checkPeerTimeouts() bool {
+func (mm *membershipManager) checkPeerTimeouts() bool {
     changed := false
 
     nmlistLock.Lock()
@@ -220,7 +243,7 @@ func (mm *MembershipManager) checkPeerTimeouts() bool {
     return changed
 }
 
-func (mm *MembershipManager) membershipBroadcast() {
+func (mm *membershipManager) membershipBroadcast() {
     broadcastTicker := time.NewTicker(mm.conf.membershipBroadcastPeriod)
     for {
         select {
@@ -245,7 +268,7 @@ func (mm *MembershipManager) membershipBroadcast() {
     }
 }
 
-func (mm *MembershipManager) voteTableBroadcast(voteTable *map[string]int, 
+func (mm *membershipManager) voteTableBroadcast(voteTable *map[string]int, 
                                                 voteTableBroadcastCh chan string) {
     //use the same period as membership broadcast
     ticker := time.NewTicker(mm.conf.membershipBroadcastPeriod)
@@ -264,7 +287,7 @@ func (mm *MembershipManager) voteTableBroadcast(voteTable *map[string]int,
 }
 
 // In voteTable, "1" means yes, "0" means no response, and "-1" means a NACK
-func (mm *MembershipManager) leadProposal() {
+func (mm *membershipManager) leadProposal() {
     var src peer.ID
     var numNACKs int
     numVotes := 1 
@@ -388,7 +411,7 @@ func (mm *MembershipManager) leadProposal() {
     }
 }
 
-func (mm *MembershipManager) checkMembershipChange() bool {
+func (mm *membershipManager) checkMembershipChange() bool {
     mm.checkPeerTimeouts()
     nmlistLock.Lock()
     defer nmlistLock.Unlock()
@@ -421,7 +444,7 @@ func (mm *MembershipManager) checkMembershipChange() bool {
     return false
 }
 
-func (mm *MembershipManager) proposeRoutine() {
+func (mm *membershipManager) proposeRoutine() {
     rand.Seed(time.Now().UnixNano())
     proposeSub, _ := mm.psub.Subscribe("membership_propose") 
     rcvdMsg := make(chan bool)
@@ -593,14 +616,14 @@ RESPOND_TO_PROPOSER:
     } // for
 }
 
-func (mm *MembershipManager) launchMemberlist(mlist map[string]int64) {
+func (mm *membershipManager) launchMemberlist(mlist map[string]int64) {
     nmlistLock.RLock()
     mm.log.Debugf("***waiting to install new membership view %d***", mlist["VIEW_ID"])
     nmlistLock.RUnlock()
     time.Sleep(1 * time.Second)
 }
 
-func (mm *MembershipManager) updateMembershipList(mlist map[string]int64) (haveMore bool) {
+func (mm *membershipManager) updateMembershipList(mlist map[string]int64) (haveMore bool) {
     haveMore = false
     mm.checkPeerTimeouts()
 
@@ -625,7 +648,7 @@ func (mm *MembershipManager) updateMembershipList(mlist map[string]int64) (haveM
     return haveMore
 }
 
-func (mm *MembershipManager) membershipBroadcastHandler() {
+func (mm *membershipManager) membershipBroadcastHandler() {
    sub, _ := mm.psub.Subscribe("next_membership") 
 
     for {
@@ -651,7 +674,7 @@ func (mm *MembershipManager) membershipBroadcastHandler() {
     }
 }
 
-func (mm *MembershipManager) installMembershipView(mlist map[string]int64, leader string) {
+func (mm *membershipManager) installMembershipView(mlist map[string]int64, leader string) {
     nmlistLock.Lock()
     defer nmlistLock.Unlock()
 
@@ -675,14 +698,30 @@ func (mm *MembershipManager) installMembershipView(mlist map[string]int64, leade
 
     h := sha1.New()
     h.Write([]byte(leader + string(mm.viewID)))
-    mID := h.Sum(nil)
+    mm.membershipID = hex.EncodeToString(h.Sum(nil))
 
     monitor.ReportEventRequest("172.16.0.254:32001", "http://0.0.0.0:8086",
-        strconv.Itoa(mm.conf.nodeID), hex.EncodeToString(mID))
+        strconv.Itoa(mm.conf.nodeID), mm.membershipID)
+    mID := []byte("replace me")
     mm.log.Debugf("reporting membership...%v", hex.EncodeToString(mID))
     mm.log.Debugf("my node ID is %d", mm.conf.nodeID)
 
-
+    //TODO: make mID a variable
     //TODO: cross reference membershipList with neighbor list. join on ONLY a neighbor.
     //TODO: start new blockchain
+}
+
+func AmLeader(membershipID string) bool {
+    //TODO, also add to interface
+    return true
+}
+
+func GetNodeCount(membershipID string) int {
+    //TODO, also add to itnerface
+    return 4
+}
+
+func GetNodeIDs(membershipID string) []int {
+    //TODO, also add to interface
+    return []int{0, 1, 2, 3}
 }

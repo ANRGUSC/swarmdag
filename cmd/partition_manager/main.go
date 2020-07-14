@@ -1,22 +1,26 @@
 package main
 
 import (
-    "os"
-    "os/signal"
-    "syscall"
+	"os"
+	"os/signal"
+	"syscall"
 
-    logging "github.com/op/go-logging"
-    "github.com/ANRGUSC/swarmdag/pkg/partition"
+	logging "github.com/op/go-logging"
+	"github.com/ANRGUSC/swarmdag/partition"
+	tmrand "github.com/tendermint/tendermint/libs/rand"
 )
 
 var log = logging.MustGetLogger("swarmdag")
 
 func main() {
 
+    // Create a note interface/struct. Then, initialize all the 
     // initiate ledger service
 
     // initiate partition manager
-    go partition.StartPartitionManager(log)
+    pm := partition.NewManager(0, log)
+
+    pm.NewNetwork(0, tmrand.Str(6))
 
     // start tendermint spawn service with gochannel input
     // upon request, new tmcore and abci apps are spawned
