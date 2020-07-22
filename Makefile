@@ -2,24 +2,17 @@ TENDERMINT_VER=0.33.2
 
 # TODO: cleanup cayleygraph db instances, clean up partition information.
 
-run-single-node-test:
-	# need sudo becuase Docker containers run as root
-	sudo rm -rf ./build/node* ./build/cayley.sock
-	./build/tendermint testnet --v 1 --o ./build --populate-persistent-peers --starting-ip-address 172.17.0.2
-	echo "attention: using ip address 172.17.0.2 for single node test"
-	docker run -it --rm -p 26656:26656 -p 26657:26657 -v $(CURDIR)/build:/fakego/src/github.com/ANRGUSC/swarmdag/build:rw -e ID=0 anrg/swarmdag
+# run-single-node-test:
+# 	# need sudo becuase Docker containers run as root
+# 	sudo rm -rf ./build/node* ./build/cayley.sock
+# 	./build/tendermint testnet --v 1 --o ./build --populate-persistent-peers --starting-ip-address 172.17.0.2
+# 	echo "attention: using ip address 172.17.0.2 for single node test"
+# 	docker run -it --rm -p 26656:26656 -p 26657:26657 -v $(CURDIR)/build:/fakego/src/github.com/ANRGUSC/swarmdag/build:rw -e ID=0 anrg/swarmdag
 
-push:
-	docker push "anrg/swarmdag"
-
-config-testnet:
-	rm -rf ./build/node*
-	rm -rf ./build/templates/node*
-	./build/tendermint testnet --v 4 --o ./build/templates --populate-persistent-peers --starting-ip-address 192.167.10.2
-
-update-wrapper:
-	@if [ ! -d ./build ]; then mkdir build/; fi
-	cp wrapper.sh ./build/wrapper.sh
+gen-keys:
+	@if [ -d .build/templates ]; then rm -rf ./build/templates/node*; fi
+	@if [ ! -d ./build/templates/ ]; then mkdir -p ./build/templates; fi
+	./build/tendermint testnet --v 4 --o ./build/templates
 
 get-tendermint:
 	@if [ ! -d ./build ]; then mkdir build/; fi
@@ -32,18 +25,22 @@ get-tendermint:
 
 build-docker:
 	docker build -t "anrg/swarmdag" ./DOCKER/
+	
+push:
+	docker push "anrg/swarmdag"
 
-build-cayley:
-	CGO_ENABLED=0 go build -o ./build/cayley ./cmd/cayley/main.go
+build-partition:
+	CGO_ENABLED=0 go build -o ./build/swarmdag ./cmd/partition_manager/main.go
 
-build: update-wrapper get-tendermint build-cayley
-
-all: build config-testnet
+local:
 	docker-compose up
+
+stop:
+	docker-compose down
 
 clean:
 	# need sudo becuase Docker containers run as root
-	sudo rm -rf build/
 	docker-compose down
+	sudo rm -rf build/
 
-.PHONY: build push config-testnet get-tendermint
+.PHONY: gen-keys get-tendermint build-docker push build-partition local stop clean

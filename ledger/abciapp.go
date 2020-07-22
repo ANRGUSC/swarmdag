@@ -20,17 +20,17 @@ import (
 	"github.com/cayleygraph/quad"
 )
 
-// LedgerApplication stores db and current struct
-type LedgerApplication struct {
+// ABCIApp stores db and current struct
+type ABCIApp struct {
 	DB           *cayley.Handle
 	currentBatch quad.Quad
 }
 
-// NewApplication creates new Instance
-func NewApplication(db *cayley.Handle) *LedgerApplication {
-	return &LedgerApplication{
-		DB: db,
-	}
+// NewABCIApp creates new Instance
+func NewABCIApp(ledger *Ledger) *ABCIApp {
+    return &ABCIApp{
+    	DB: ledger.DB,
+    }
 }
 
 // Transaction struct
@@ -47,21 +47,21 @@ type Transaction struct {
 // We would need to find the longest chain and point to latest transaction of it
 var LatestTransaction *Transaction = nil
 
-var _ abcitypes.Application = (*LedgerApplication)(nil)
+var _ abcitypes.Application = (*ABCIApp)(nil)
 var transactionsEnabled = true
 
 // Info Tendermint ABCI
-func (app *LedgerApplication) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo {
+func (app *ABCIApp) Info(req abcitypes.RequestInfo) abcitypes.ResponseInfo {
 	return abcitypes.ResponseInfo{}
 }
 
 // SetOption Tendermint ABCI
-func (app *LedgerApplication) SetOption(req abcitypes.RequestSetOption) abcitypes.ResponseSetOption {
+func (app *ABCIApp) SetOption(req abcitypes.RequestSetOption) abcitypes.ResponseSetOption {
 	return abcitypes.ResponseSetOption{}
 }
 
 // DeliverTx Tendermint ABCI
-func (app *LedgerApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
+func (app *ABCIApp) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
 
 	/*
 		Transaction can also be disabled at this point, before they get delivered
@@ -111,7 +111,7 @@ func (app *LedgerApplication) DeliverTx(req abcitypes.RequestDeliverTx) abcitype
 }
 
 // CheckTx Tendermint ABCI
-func (app *LedgerApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
+func (app *ABCIApp) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
 	/*
 		Disable new incoming transactions while tendermint is running by returning
 		a non-zero status code in the ResponseCheckTx struct"
@@ -133,14 +133,14 @@ func (app *LedgerApplication) CheckTx(req abcitypes.RequestCheckTx) abcitypes.Re
 }
 
 // Commit Tendermint ABCI
-func (app *LedgerApplication) Commit() abcitypes.ResponseCommit {
+func (app *ABCIApp) Commit() abcitypes.ResponseCommit {
 	// Save data to cayley graph
 	app.DB.AddQuad(app.currentBatch)
 	return abcitypes.ResponseCommit{Data: []byte{}}
 }
 
 // Query Tendermint ABCI
-func (app *LedgerApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
+func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.ResponseQuery) {
 	if string(reqQuery.Path) == "disableTx" {
 		transactionsEnabled = false
 		resQuery.Log = "Incoming Transactions are disabled."
@@ -197,12 +197,12 @@ func (app *LedgerApplication) Query(reqQuery abcitypes.RequestQuery) (resQuery a
 }
 
 // InitChain Tendermint ABCI
-func (app *LedgerApplication) InitChain(req abcitypes.RequestInitChain) abcitypes.ResponseInitChain {
+func (app *ABCIApp) InitChain(req abcitypes.RequestInitChain) abcitypes.ResponseInitChain {
 	return abcitypes.ResponseInitChain{}
 }
 
 // BeginBlock Tendermint ABCI
-func (app *LedgerApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
+func (app *ABCIApp) BeginBlock(req abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
 	// Create an empty quad. Will be overwritten with an actual quad with data
 	// Make the old data inaccessible
 	// This has to be HERE. Cannot be in EndBlock, otherwise will not be commited
@@ -211,12 +211,12 @@ func (app *LedgerApplication) BeginBlock(req abcitypes.RequestBeginBlock) abcity
 }
 
 // EndBlock Tendermint ABCI
-func (app *LedgerApplication) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
+func (app *ABCIApp) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
 	return abcitypes.ResponseEndBlock{}
 }
 
 // ReturnAll returns every transactions
-func (app *LedgerApplication) ReturnAll() []Transaction {
+func (app *ABCIApp) ReturnAll() []Transaction {
 	//schema.RegisterType("Transaction", Transaction{})
 	var p *cayley.Path
 
@@ -272,7 +272,7 @@ func (app *LedgerApplication) ReturnAll() []Transaction {
 }
 
 // Search returns nil if not found
-func (app *LedgerApplication) Search(hash []byte) *Transaction {
+func (app *ABCIApp) Search(hash []byte) *Transaction {
 	var p *cayley.Path
 	p = cayley.StartPath(app.DB)
 	ctx := context.TODO()
@@ -320,7 +320,7 @@ func (app *LedgerApplication) Search(hash []byte) *Transaction {
 	}
 	return nil
 }
-func (app *LedgerApplication) isValid(tx []byte) (code uint32) {
+func (app *ABCIApp) isValid(tx []byte) (code uint32) {
 
 	// check format
 	parts := bytes.Split(tx, []byte("="))
@@ -341,7 +341,7 @@ func (app *LedgerApplication) isValid(tx []byte) (code uint32) {
 }
 
 // Insert adds a new transction to the DAG
-func (app *LedgerApplication) Insert(tx Transaction, prevTx Transaction) error {
+func (app *ABCIApp) Insert(tx Transaction, prevTx Transaction) error {
 	err := app.DB.AddQuad(quad.Make(tx, "follows", prevTx, nil))
 	LatestTransaction = (&tx)
 	return err
@@ -424,7 +424,7 @@ func ReturnJSON(txs []Transaction) string {
 }
 
 // InsertFromJSON inserts new transaction in the JSON into the graph
-func (app *LedgerApplication) InsertFromJSON(jsonInput []byte) {
+func (app *ABCIApp) InsertFromJSON(jsonInput []byte) {
 	// convert the JSON to structs
 	var txs []Transaction
 	err := json.Unmarshal(jsonInput, &txs)

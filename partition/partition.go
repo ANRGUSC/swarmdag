@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+    "time"
 
 	cfg "github.com/tendermint/tendermint/config"
 	tmflags "github.com/tendermint/tendermint/libs/cli/flags"
@@ -22,10 +23,13 @@ import (
     "github.com/ANRGUSC/swarmdag/ledger"
     abciserver "github.com/tendermint/tendermint/abci/server"
     "github.com/tendermint/tendermint/libs/service"
+    tmlog "github.com/tendermint/tendermint/libs/log"
 )
 
 var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
+// var ipPrefix = "0.0.0"
 var ipPrefix = "192.168.10" // prefix for all containers
+var idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4
 
 type Manager interface {
     NewNetwork(viewID int, membershipID string)
@@ -37,15 +41,16 @@ type manager struct {
     instances   []*tmn.Node
     abciservers []*service.Service
     stopOld     chan bool
+    ledger      *ledger.Ledger
 }
 
-func NewManager (nodeID int, log *logging.Logger) Manager {
+func NewManager (nodeID int, log *logging.Logger, ledger *ledger.Ledger) Manager {
     m := &manager {
         nodeID: nodeID,
         log: log,
         stopOld: make(chan bool, 16),
+        ledger: ledger,
     }
-
     return m
 }
 
@@ -53,53 +58,25 @@ func stopAll() {
     return
 }
 
-func (m *manager) newLedgerApp() {
-    // File for your new BoltDB. Use path to regular file and not temporary in the real world
-    tmpdir, err := ioutil.TempDir("", "cayleyFiles")
-    if err != nil {
-        panic(err)
-    }
+func (m *manager) NewNetwork(viewID int, membershipID string) {
+    appAddr := fmt.Sprintf("0.0.0.0:200%d", viewID % 100)
+    app := ledger.NewABCIApp(m.ledger)
+    server := abciserver.NewSocketServer(appAddr, app)
 
-    defer os.RemoveAll(tmpdir) // clean up
-
-    // Initialize the database
-    err = graph.InitQuadStore("bolt", tmpdir, nil)
-    if err != nil {
-        panic(err)
-    }
-
-    // Open and use the database
-    db, err := cayley.NewGraph("bolt", tmpdir, nil)
-    if err != nil {
-        panic(err)
-    }
-
-    app := ledger.NewApplication(db)
-
-
-    server := abciserver.NewSocketServer(fmt.Sprintf("0.0.0.0:200%d", viewID % 100), app)
-
-    server.SetLogger(m.log)
+    server.SetLogger(tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout)))
     if err := server.Start(); err != nil {
         fmt.Fprintf(os.Stderr, "error starting socket server: %v\n", err)
         os.Exit(1)
     }
+    m.abciservers = append(m.abciservers, &server)
 
-    m.abciservers = append(m.abciservers, app)
-}
-
-func (m *manager) NewNetwork(viewID int, membershipID string) {
-
-
-    node, err := m.newTendermint(fmt.Sprintf("0.0.0.0:200%d", viewID % 100), 
-        viewID, membershipID)
+    node, err := m.newTendermint(appAddr, viewID, membershipID)
     if err != nil {
         fmt.Fprintf(os.Stderr, "%v", err)
         os.Exit(2)
     }
 
     m.instances = append(m.instances, node)
-
     m.stopOld <- true
 }
 
@@ -124,9 +101,9 @@ func (m *manager) tmStopService() {
 // RPC port 30XX, P2P port 40XX, XX = viewID % 100
 func (m *manager) newTendermint(appAddr string, viewID int, membershipID string) (*tmn.Node, error) {
     config := cfg.DefaultConfig()
-
     membershipDir := fmt.Sprintf("tmp/%s/node%d/config", membershipID, m.nodeID)
     config.RootDir = filepath.Dir(filepath.Join(rootDirStart, membershipDir))
+    m.log.Debugf("My root dir is %s", config.RootDir)
 
     nValidators := membership.GetNodeCount(membershipID)
     genVals := make([]types.GenesisValidator, nValidators)
@@ -136,7 +113,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
         nodeName := fmt.Sprintf("node%d", nodeID)
         nodeDir := filepath.Join(rootDirStart, "templates", nodeName)
 
-        // Gather validator address for genesis file
+        // Gather validator address in group for genesis file
         pvKeyFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorKey)
         pvStateFile := filepath.Join(nodeDir, config.BaseConfig.PrivValidatorState)
         pv := privval.LoadFilePV(pvKeyFile, pvStateFile)
@@ -146,6 +123,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
             return nil, err
         }
 
+        // Used for leader to generate genesis files
         genVals[i] = types.GenesisValidator{
             Address: pubKey.Address(),
             PubKey:  pubKey,
@@ -160,8 +138,31 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
         }
 
         persistentPeers[i] = p2p.IDAddressString(nodeKey.ID(), 
-            fmt.Sprintf("%s.%s:400%d", ipPrefix, nodeID, viewID % 100))
+            fmt.Sprintf("%s.%d:400%d", ipPrefix, nodeID + idToIPOffset, 
+                viewID % 100))
     }
+
+    if membership.AmLeader(membershipID) {
+        // Write genesis file for all nodes to keep genesis time constant
+        genDoc := &types.GenesisDoc{
+            ChainID:         "chain-" + membershipID,
+            ConsensusParams: types.DefaultConsensusParams(),
+            GenesisTime:     tmtime.Now(),
+            Validators:      genVals,
+        }
+
+        for _, nodeID := range membership.GetNodeIDs(membershipID) {
+            nodeDir := filepath.Join(filepath.Dir(config.RootDir), fmt.Sprintf("node%d", nodeID))
+            os.MkdirAll(nodeDir + "/config", 0755)
+            if err := genDoc.SaveAs(filepath.Join(nodeDir, config.BaseConfig.Genesis)); err != nil {
+                return nil, err
+            }
+        }
+    } else {
+        m.log.Debug("not leader, waiting for files to generate...")
+        time.Sleep(5 * time.Second)
+    }
+
 
     err := os.MkdirAll(filepath.Join(config.RootDir, "config"), 0755)
     if err != nil {
@@ -180,30 +181,12 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
     config.P2P.AllowDuplicateIP = true
     config.P2P.PersistentPeers = strings.Join(persistentPeers, ",")
     config.Consensus.WalPath = filepath.Join(config.RootDir, "/data/cs.wal/wal")
+    config.Consensus.CreateEmptyBlocks = true
     config.Moniker = fmt.Sprintf("node%d", m.nodeID)
-
-    if membership.AmLeader(membershipID) {
-        // Write genesis file for all nodes to keep genesis time constant
-        genDoc := &types.GenesisDoc{
-            ChainID:         "chain-" + membershipID,
-            ConsensusParams: types.DefaultConsensusParams(),
-            GenesisTime:     tmtime.Now(),
-            Validators:      genVals,
-        }
-
-        for _, nodeID := range membership.GetNodeIDs(membershipID) {
-            nodeDir := filepath.Join(filepath.Dir(config.RootDir), fmt.Sprintf("node%d", nodeID))
-            os.MkdirAll(nodeDir + "/config", 0755)
-            if err := genDoc.SaveAs(filepath.Join(nodeDir, config.BaseConfig.Genesis)); err != nil {
-                return nil, err
-            }
-        }
-    }
 
     // copy template files
     templateDir := filepath.Join(rootDirStart, 
         fmt.Sprintf("/templates/node%d", m.nodeID))
-    m.log.Debug(templateDir)
     copyFile(filepath.Join(templateDir, "config/node_key.json"), 
         filepath.Join(config.RootDir, "config/node_key.json"))
     copyFile(filepath.Join(templateDir, "config/priv_validator_key.json"), 
@@ -213,7 +196,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
 
     // create logger
     logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-    logger, err = tmflags.ParseLogLevel(config.LogLevel, logger, cfg.DefaultLogLevel())
+    logger, err = tmflags.ParseLogLevel("debug", logger, "debug")
     if err != nil {
         return nil, fmt.Errorf("failed to parse log level: %w", err)
     }

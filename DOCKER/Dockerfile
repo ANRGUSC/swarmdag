@@ -23,8 +23,6 @@ VOLUME [ $GOPATH/src/github.com/ANRGUSC/swarmdag/build/ ]
 WORKDIR $GOPATH/src/github.com/ANRGUSC/swarmdag/build
 
 # p2p and rpc port
-EXPOSE 26656 26657
+EXPOSE 2000-5000
 
-# wrapper.sh should be mounted into the container at the workdir
-ENTRYPOINT ./wrapper.sh
-STOPSIGNAL SIGTERM
+# STOPSIGNAL SIGTERM

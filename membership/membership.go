@@ -20,6 +20,8 @@ import (
 	// "github.com/hashicorp/memberlist"
 )
 
+var isLeader bool = false
+
 type nodeState int
 
 const (
@@ -711,9 +713,13 @@ func (mm *membershipManager) installMembershipView(mlist map[string]int64, leade
     //TODO: start new blockchain
 }
 
+func SetLeader() {
+    isLeader = true
+}
+
 func AmLeader(membershipID string) bool {
     //TODO, also add to interface
-    return true
+    return isLeader
 }
 
 func GetNodeCount(membershipID string) int {
