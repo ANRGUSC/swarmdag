@@ -76,6 +76,8 @@ func (m *manager) NewNetwork(viewID int, membershipID string) {
         os.Exit(2)
     }
 
+    node.Start()
+
     m.instances = append(m.instances, node)
     m.stopOld <- true
 }
@@ -176,12 +178,11 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
     // containers
     config.RPC.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:300%d", viewID % 100)
     config.P2P.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:400%d", viewID % 100)
-
     config.P2P.AddrBookStrict = false
     config.P2P.AllowDuplicateIP = true
     config.P2P.PersistentPeers = strings.Join(persistentPeers, ",")
     config.Consensus.WalPath = filepath.Join(config.RootDir, "/data/cs.wal/wal")
-    config.Consensus.CreateEmptyBlocks = true
+    config.Consensus.CreateEmptyBlocks = false
     config.Moniker = fmt.Sprintf("node%d", m.nodeID)
 
     // copy template files
@@ -196,7 +197,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
 
     // create logger
     logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-    logger, err = tmflags.ParseLogLevel("debug", logger, "debug")
+    logger, err = tmflags.ParseLogLevel("*:debug", logger, "*:debug")
     if err != nil {
         return nil, fmt.Errorf("failed to parse log level: %w", err)
     }

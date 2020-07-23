@@ -5,7 +5,6 @@ import (
 	"os/signal"
 	"syscall"
     "flag"
-    "fmt"
 
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/partition"
