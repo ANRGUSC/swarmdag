@@ -33,6 +33,7 @@ var idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4
 
 type Manager interface {
     NewNetwork(viewID int, membershipID string)
+    Init()
 }
 
 type manager struct {
@@ -52,6 +53,10 @@ func NewManager (nodeID int, log *logging.Logger, ledger *ledger.Ledger) Manager
         ledger: ledger,
     }
     return m
+}
+
+func (m *manager) Init() {
+    go m.initStopService()
 }
 
 func stopAll() {
@@ -75,20 +80,20 @@ func (m *manager) NewNetwork(viewID int, membershipID string) {
         fmt.Fprintf(os.Stderr, "%v", err)
         os.Exit(2)
     }
-
     node.Start()
 
     m.instances = append(m.instances, node)
     m.stopOld <- true
 }
 
-func (m *manager) tmStopService() {
+func (m *manager) initStopService() {
     var node *tmn.Node
     for  {
         select {
         case <-m.stopOld:
             for len(m.instances) > 1 {
                 node, m.instances = m.instances[0], m.instances[1:] 
+                m.log.Debug("stopping instance")
                 node.Stop()
                 node.Wait()
                 // TODO: decide on truncation
@@ -98,9 +103,7 @@ func (m *manager) tmStopService() {
     }
 }
 
-// func (m * manager) newABCIA
-
-// RPC port 30XX, P2P port 40XX, XX = viewID % 100
+// RPC port 30XX, P2P port 40XX -- where XX = viewID % 100
 func (m *manager) newTendermint(appAddr string, viewID int, membershipID string) (*tmn.Node, error) {
     config := cfg.DefaultConfig()
     membershipDir := fmt.Sprintf("tmp/%s/node%d/config", membershipID, m.nodeID)

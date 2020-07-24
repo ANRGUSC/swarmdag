@@ -21,6 +21,7 @@ import (
 )
 
 var isLeader bool = false
+var mydebugnodeid int
 
 type nodeState int
 
@@ -713,21 +714,56 @@ func (mm *membershipManager) installMembershipView(mlist map[string]int64, leade
     //TODO: start new blockchain
 }
 
-func SetLeader() {
-    isLeader = true
-}
-
 func AmLeader(membershipID string) bool {
     //TODO, also add to interface
-    return isLeader
+    switch (membershipID) {
+    case "aaaaaa":
+        if mydebugnodeid == 0 {
+            return true
+        }
+    case "bbbbbb":
+        if mydebugnodeid == 0 {
+            return true
+        }
+    case "cccccc":
+        if mydebugnodeid == 2 {
+            return true
+        }
+    }
+    return false
 }
 
 func GetNodeCount(membershipID string) int {
     //TODO, also add to itnerface
-    return 4
+    switch (membershipID) {
+    case "aaaaaa":
+        return 4
+    case "bbbbbb":
+        return 2
+    case "cccccc":
+        return 2
+    }
+    return 0
+}
+
+func SetID(id int) {
+    mydebugnodeid = id
+}
+
+func MyID() int {
+    return mydebugnodeid
 }
 
 func GetNodeIDs(membershipID string) []int {
     //TODO, also add to interface
-    return []int{0, 1, 2, 3}
+    switch (membershipID) {
+    case "aaaaaa":
+        return []int{0, 1, 2, 3}
+    case "bbbbbb":
+        return []int{0, 1}
+    case "cccccc":
+        return []int{2, 3}
+    }
+
+    return nil
 }

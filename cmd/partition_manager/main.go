@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"syscall"
     "flag"
+    "time"
 
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/partition"
@@ -23,25 +24,26 @@ func init() {
 func main() {
     flag.Parse()
     // TODO: removeme
-    if nodeID == 0 {
-        membership.SetLeader()
-    }
+    membership.SetID(nodeID)
     // TODO: need to synchronize the config file copying and stuff
 
     // Create a node interface/struct. Then, initialize all the 
     viewID := 0
-    membershipID := "jSDFgS"
+    membershipID := "aaaaaa"
+    secondMID := "bbbbbb"
+    if nodeID > 1 {
+        secondMID = "cccccc"
+    }
 
     ledger := ledger.NewLedger()
     // initiate partition manager
     pm := partition.NewManager(nodeID, log, ledger)
+    pm.Init()
     pm.NewNetwork(viewID, membershipID)
 
-    // start tendermint spawn service with gochannel input
-    // upon request, new tmcore and abci apps are spawned
+    time.Sleep(10 * time.Second)
 
-
-    // start mms. 
+    pm.NewNetwork(viewID + 1, secondMID)
 
     c := make(chan os.Signal, 1)
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)

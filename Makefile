@@ -29,7 +29,7 @@ build-docker:
 push:
 	docker push "anrg/swarmdag"
 
-build-partition:
+build:
 	CGO_ENABLED=0 go build -o ./build/swarmdag ./cmd/partition_manager/main.go
 
 local:
@@ -43,4 +43,4 @@ clean:
 	docker-compose down
 	sudo rm -rf build/
 
-.PHONY: gen-keys get-tendermint build-docker push build-partition local stop clean
+.PHONY: gen-keys get-tendermint build build-docker push build-partition local stop clean
