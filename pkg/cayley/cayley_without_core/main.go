@@ -28,7 +28,7 @@ import (
 // Transaction struct
 type Transaction struct {
 	Hash      []byte `json:"hash" quad:"hash"`
-	PrevHash  []byte `json:"prevHash" quad:"prevHash"`
+	ParentHash  []byte `json:"parentHash" quad:"parentHash"`
 	Timestamp []byte `json:"timestamp"  quad:"timestap"`
 	Key       []byte `json:"key" quad:"key"`
 	Value     []byte `json:"value" quad:"value"`
@@ -78,7 +78,7 @@ func main() {
 	binary.LittleEndian.PutUint64(b, 0)
 	genesis := Transaction{
 		Hash:      []byte{},
-		PrevHash:  []byte{},
+		ParentHash:  []byte{},
 		Timestamp: b,
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),
@@ -146,22 +146,22 @@ func (app *CayleyApplication) Insert(tx Transaction, prevTx Transaction) error {
 }
 
 // NewTransaction creates a new Transaction struct
-func NewTransaction(key []byte, value []byte, prevHash []byte) Transaction {
+func NewTransaction(key []byte, value []byte, parentHash []byte) Transaction {
 	b := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b, uint64(time.Now().UnixNano()))
-	transaction := Transaction{[]byte{}, prevHash, b, key, value}
+	transaction := Transaction{[]byte{}, parentHash, b, key, value}
 	transaction.setHash()
 	return transaction
 }
 
 //RestoreTransaction restores a transaction fetched from the DAG
-func restoreTransaction(hash []byte, prevHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
-	transaction := Transaction{hash, prevHash, timestamp, key, value}
+func restoreTransaction(hash []byte, parentHash []byte, timestamp []byte, key []byte, value []byte) Transaction {
+	transaction := Transaction{hash, parentHash, timestamp, key, value}
 	return transaction
 }
 
 func (t *Transaction) setHash() {
-	headers := bytes.Join([][]byte{t.PrevHash, t.Key, t.Value, t.Timestamp}, []byte{})
+	headers := bytes.Join([][]byte{t.ParentHash, t.Key, t.Value, t.Timestamp}, []byte{})
 	hash := sha256.Sum256(headers)
 	t.Hash = hash[:]
 }
@@ -171,7 +171,7 @@ func (t Transaction) Print() {
 	fmt.Printf("Key: %s\n", t.Key)
 	fmt.Printf("Value: %s\n", t.Value)
 	fmt.Println("Hash: " + base64.StdEncoding.EncodeToString(t.Hash))
-	fmt.Println("Prev. Hash: " + base64.StdEncoding.EncodeToString(t.PrevHash))
+	fmt.Println("Prev. Hash: " + base64.StdEncoding.EncodeToString(t.ParentHash))
 	fmt.Printf("Timestamp: %d\n", t.Timestamp)
 	fmt.Println()
 }
@@ -235,7 +235,7 @@ func (app *CayleyApplication) InsertFromJSON(jsonInput []byte) {
 
 			// What if previous Hash does not exist
 			// Find the previous Transaction
-			prevTx := app.Search(txs[i].PrevHash)
+			prevTx := app.Search(txs[i].ParentHash)
 
 			if prevTx == nil {
 				fmt.Println("TODO: Could not insert b/c previous transaction is not in the database. Skipping this Tx")

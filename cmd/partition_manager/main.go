@@ -5,7 +5,7 @@ import (
 	"os/signal"
 	"syscall"
     "flag"
-    "time"
+    // "time"
 
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/partition"
@@ -30,20 +30,20 @@ func main() {
     // Create a node interface/struct. Then, initialize all the 
     viewID := 0
     membershipID := "aaaaaa"
-    secondMID := "bbbbbb"
+    // secondMID := "bbbbbb"
     if nodeID > 1 {
-        secondMID = "cccccc"
+        // secondMID = "cccccc"
     }
 
-    ledger := ledger.NewLedger()
+    ledger := ledger.NewLedger(log)
     // initiate partition manager
     pm := partition.NewManager(nodeID, log, ledger)
     pm.Init()
     pm.NewNetwork(viewID, membershipID)
 
-    time.Sleep(10 * time.Second)
+    // time.Sleep(25 * time.Second)
 
-    pm.NewNetwork(viewID + 1, secondMID)
+    // pm.NewNetwork(viewID + 1, secondMID)
 
     c := make(chan os.Signal, 1)
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)

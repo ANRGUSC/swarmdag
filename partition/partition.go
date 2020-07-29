@@ -30,6 +30,7 @@ var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 // var ipPrefix = "0.0.0"
 var ipPrefix = "192.168.10" // prefix for all containers
 var idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4
+var tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
 
 type Manager interface {
     NewNetwork(viewID int, membershipID string)
@@ -65,10 +66,11 @@ func stopAll() {
 
 func (m *manager) NewNetwork(viewID int, membershipID string) {
     appAddr := fmt.Sprintf("0.0.0.0:200%d", viewID % 100)
-    app := ledger.NewABCIApp(m.ledger)
+    app := ledger.NewABCIApp(m.ledger, m.log)
     server := abciserver.NewSocketServer(appAddr, app)
-
-    server.SetLogger(tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout)))
+    logger := tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
+    logger, _ = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
+    server.SetLogger(logger)
     if err := server.Start(); err != nil {
         fmt.Fprintf(os.Stderr, "error starting socket server: %v\n", err)
         os.Exit(1)
@@ -98,6 +100,7 @@ func (m *manager) initStopService() {
                 node.Wait()
                 // TODO: decide on truncation
                 // TODO: if a merge reconcile ledger
+                // TODO: stop abci server
             }
         }
     }
@@ -165,7 +168,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
         }
     } else {
         m.log.Debug("not leader, waiting for files to generate...")
-        time.Sleep(5 * time.Second)
+        time.Sleep(3 * time.Second)
     }
 
 
@@ -200,7 +203,7 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
 
     // create logger
     logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-    logger, err = tmflags.ParseLogLevel("*:debug", logger, "*:debug")
+    logger, err = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
     if err != nil {
         return nil, fmt.Errorf("failed to parse log level: %w", err)
     }

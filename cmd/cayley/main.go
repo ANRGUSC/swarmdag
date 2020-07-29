@@ -58,7 +58,7 @@ func main() {
 	binary.LittleEndian.PutUint64(b, 0)
 	genesis := Transaction{
 		Hash:      []byte{},
-		PrevHash:  []byte{},
+		ParentHash:  []byte{},
 		Timestamp: b,
 		Key:       []byte("Genesis"),
 		Value:     []byte("Genesis"),

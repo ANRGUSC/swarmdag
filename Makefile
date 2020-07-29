@@ -38,9 +38,12 @@ local:
 stop:
 	docker-compose down
 
+rm_tmp:
+	sudo rm -rf build/tmp/
+
 clean:
 	# need sudo becuase Docker containers run as root
 	docker-compose down
 	sudo rm -rf build/
 
-.PHONY: gen-keys get-tendermint build build-docker push build-partition local stop clean
+.PHONY: gen-keys get-tendermint build build-docker push build-partition local stop clean rm_tmp

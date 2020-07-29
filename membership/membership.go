@@ -137,21 +137,14 @@ func NewMembershipManager(conf *Config, ctx context.Context,
 }
 
 func (mm *membershipManager) GetMembershipID() string {
+    // TODO: also integrated into grpc
     // return mm.membershipID
     return tmrand.Str(6)
 }
 
 func (mm *membershipManager) GetNodeID() int {
-    // TODO: implement me
+    // TODO: also integrated into grpc
     return 1
-}
-
-func (mm *membershipManager) AmLeader() bool {
-    // TODO
-    if mm.GetNodeID() == 0 {
-        return true
-    }
-    return false
 }
 
 func (mm *membershipManager) connectHandler(c network.Conn) {
