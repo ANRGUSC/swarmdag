@@ -12,7 +12,7 @@ TENDERMINT_VER=0.33.2
 gen-keys:
 	@if [ -d .build/templates ]; then rm -rf ./build/templates/node*; fi
 	@if [ ! -d ./build/templates/ ]; then mkdir -p ./build/templates; fi
-	./build/tendermint testnet --v 4 --o ./build/templates
+	./build/tendermint testnet --v 50 --o ./build/templates
 
 get-tendermint:
 	@if [ ! -d ./build ]; then mkdir build/; fi

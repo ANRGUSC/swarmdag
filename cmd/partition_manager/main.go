@@ -38,7 +38,6 @@ func main() {
     ledger := ledger.NewLedger(log)
     // initiate partition manager
     pm := partition.NewManager(nodeID, log, ledger)
-    pm.Init()
     pm.NewNetwork(viewID, membershipID)
 
     // time.Sleep(25 * time.Second)

@@ -34,15 +34,12 @@ var tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
 
 type Manager interface {
     NewNetwork(viewID int, membershipID string)
-    Init()
 }
 
 type manager struct {
     nodeID      int
     log         *logging.Logger
-    instances   []*tmn.Node
-    abciservers []*service.Service
-    stopOld     chan bool
+    instances   map[*tmn.Node]service.Service
     ledger      *ledger.Ledger
 }
 
@@ -50,58 +47,50 @@ func NewManager (nodeID int, log *logging.Logger, ledger *ledger.Ledger) Manager
     m := &manager {
         nodeID: nodeID,
         log: log,
-        stopOld: make(chan bool, 16),
         ledger: ledger,
     }
     return m
 }
 
-func (m *manager) Init() {
-    go m.initStopService()
-}
-
-func stopAll() {
-    return
-}
-
+// Membership manager should be able to call this on new view installation
 func (m *manager) NewNetwork(viewID int, membershipID string) {
+    // Stop all old instances for a clean start
+    m.stopOldNetworks()
+
+    // start ABCI app
     appAddr := fmt.Sprintf("0.0.0.0:200%d", viewID % 100)
-    app := ledger.NewABCIApp(m.ledger, m.log)
+    app := ledger.NewABCIApp(m.ledger, m.log, membershipID)
     server := abciserver.NewSocketServer(appAddr, app)
     logger := tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
     logger, _ = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
     server.SetLogger(logger)
     if err := server.Start(); err != nil {
-        fmt.Fprintf(os.Stderr, "error starting socket server: %v\n", err)
-        os.Exit(1)
+        m.log.Fatalf("error starting socket server: %v\n", err)
     }
-    m.abciservers = append(m.abciservers, &server)
 
+    // start tendermint
     node, err := m.newTendermint(appAddr, viewID, membershipID)
     if err != nil {
-        fmt.Fprintf(os.Stderr, "%v", err)
-        os.Exit(2)
+        m.log.Fatalf("error starting new tendermint net: %v", err)
     }
     node.Start()
 
-    m.instances = append(m.instances, node)
-    m.stopOld <- true
+    m.instances[node] = server
 }
 
-func (m *manager) initStopService() {
-    var node *tmn.Node
-    for  {
-        select {
-        case <-m.stopOld:
-            for len(m.instances) > 1 {
-                node, m.instances = m.instances[0], m.instances[1:] 
-                m.log.Debug("stopping instance")
-                node.Stop()
-                node.Wait()
-                // TODO: decide on truncation
-                // TODO: if a merge reconcile ledger
-                // TODO: stop abci server
-            }
+func (m *manager) stopOldNetworks() {
+
+    for node, server := range m.instances {
+        m.log.Infof("Stopping network instance %p", node)
+        node.Stop()
+        node.Wait() //TODO: does this wait for a block in a round to finish?
+        // TODO: decide on truncation (essentially dequeue block in the queue)
+        // TODO: if a merge reconcile ledger
+        // - gossip mID with a hash ofallTxs
+        // - if discrepancy found, gossip back a request with LAST block you know of
+        //   in that membership id. a response should be given with all missing blocks
+        if err := server.Stop(); err != nil {
+            m.log.Fatalf("error starting socket server: %v\n", err)
         }
     }
 }

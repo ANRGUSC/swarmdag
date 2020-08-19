@@ -1,20 +1,17 @@
 package ledger
 
 import (
+	"crypto/sha1"
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"encoding/hex"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
-
-	"github.com/cayleygraph/cayley"
 	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
 	"github.com/cayleygraph/quad"
 	logging "github.com/op/go-logging"
@@ -25,13 +22,17 @@ type ABCIApp struct {
 	ledger       *Ledger
 	currentBatch quad.Quad
 	log			 *logging.Logger
+	membershipID string
+	headHash	 string
 }
 
 // NewABCIApp creates new Instance
-func NewABCIApp(ledger *Ledger, log *logging.Logger) *ABCIApp {
+func NewABCIApp(ledger *Ledger, log *logging.Logger, membershipID string) *ABCIApp {
+	ledger.CreateAlphaTx(membershipID)
     return &ABCIApp{
     	ledger: ledger,
     	log: log,
+    	membershipID: membershipID,
     }
 }
 
@@ -61,7 +62,7 @@ func (app *ABCIApp) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Response
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 	if transactionsEnabled == false {
-		fmt.Println("Incoming transactions are currently disabled")
+		app.log.Info("Incoming transactions are currently disabled")
 		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 
@@ -71,21 +72,8 @@ func (app *ABCIApp) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Response
 		fmt.Println("jason:" + txBody)
 		app.InsertFromJSON([]byte(txBody))
 	} else {
-		code := app.isValid(req.Tx)
-		if code != 0 {
-			return abcitypes.ResponseDeliverTx{Code: 1}
-		}
-		// key=value
-		parts := strings.Split(txBody, "=")
-		key, value := parts[0], parts[1]
-		fmt.Println("New Transaction with key: " + key + ", value: " + value)
-		if (len(key) == 0) || (len(value) == 0) {
-			app.log.Error("key or value empty in request")
-			return abcitypes.ResponseDeliverTx{Code: 1}
-		}
-		newTx := NewTransaction(key, value, LatestTransaction.Hash)
-		app.ledger.insertTx(&newTx, LatestTransaction.Hash)
-		newTx.Print()
+		app.log.Warning("Transaction body invalid")
+		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 
 	return abcitypes.ResponseDeliverTx{Code: 0}
@@ -129,7 +117,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 		fmt.Println("Incoming Transactions are enabled.")
 	} else if string(reqQuery.Data) == "returnAll" {
 
-		txs := app.ReturnAll()
+		txs := app.ledger.ReturnAll()
 		PrintAll(txs)
 		SortbyDate(txs)
 		result := ReturnJSON(txs)
@@ -149,7 +137,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 			resQuery.Log = "Error: Cannot convert Hash"
 			return
 		}
-		tx := app.Search(string(hash))
+		tx := app.ledger.Search(string(hash))
 		if tx == nil {
 			resQuery.Log = "Error: Cannot find Transaction"
 			return
@@ -162,7 +150,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 		resQuery.Value = []byte(out)
 		resQuery.Log = "Found Transaction"
 	} else if string(reqQuery.Data) == "returnHash" {
-		txs := app.ReturnAll()
+		txs := app.ledger.ReturnAll()
 		hash := SortAndHash(txs)
 		PrintAll(txs)
 		fmt.Println(base64.StdEncoding.EncodeToString([]byte(hash)))
@@ -191,57 +179,7 @@ func (app *ABCIApp) EndBlock(req abcitypes.RequestEndBlock) abcitypes.ResponseEn
 	return abcitypes.ResponseEndBlock{}
 }
 
-// ReturnAll returns every transactions
-func (app *ABCIApp) ReturnAll() []Transaction {
-	p := cayley.StartPath(app.ledger.DB).Tag("hash").
-		Has(quad.String("timestamp")).
-		Save("child_of", "parentHash").
-		Save("timestamp", "timestamp").
-		Save("key", "key").
-		Save("value", "value")
 
-	txs := []Transaction{}
-	err := p.Iterate(nil).TagValues(nil, func(tags map[string]quad.Value) {
-		txs = append(txs, Transaction{
-			quad.NativeOf(tags["hash"]).(string),
-			quad.NativeOf(tags["parentHash"]).(string),
-			quad.NativeOf(tags["timestamp"]).(int64),
-			quad.NativeOf(tags["key"]).(string),
-			quad.NativeOf(tags["value"]).(string),
-		})
-	})
-	if err != nil {
-		app.log.Critical(err)
-	}
-	return txs
-}
-
-// Search returns nil if not found
-func (app *ABCIApp) Search(hash string) *Transaction {
-	var tx *Transaction = nil
-	p := cayley.StartPath(app.ledger.DB).Tag("hash").
-		Has(quad.String("timestamp")).
-		Save("child_of", "parentHash").
-		Save("timestamp", "timestamp").
-		Save("key", "key").
-		Save("value", "value")
-	err := p.Iterate(nil).TagValues(nil, func(tags map[string]quad.Value) {
-		fmt.Printf("jason is ", quad.NativeOf(tags["hash"]))
-		if strings.Compare(quad.NativeOf(tags["hash"]).(string), hash) == 0 {
-			tx = &Transaction {
-				quad.NativeOf(tags["hash"]).(string),
-				quad.NativeOf(tags["parentHash"]).(string),
-				quad.NativeOf(tags["timestamp"]).(int64),
-				quad.NativeOf(tags["key"]).(string),
-				quad.NativeOf(tags["value"]).(string),
-			}
-		}
-	})
-	if err != nil {
-		app.log.Critical(err)
-	}
-	return tx
-}
 
 func (app *ABCIApp) isValid(tx []byte) (code uint32) {
 	// check format
@@ -263,32 +201,14 @@ func (app *ABCIApp) Insert(tx Transaction, prevTx Transaction) error {
 	return err
 }
 
-// NewTransaction creates a new Transaction struct
-func NewTransaction(key string, value string, parentHash string) Transaction {
-	transaction := Transaction{"", parentHash, time.Now().UnixNano(), key, value}
-	transaction.SetHash()
-	return transaction
-}
-
 //RestoreTransaction restores a transaction fetched from the DAG
-func RestoreTransaction(hash string, parentHash string, timestamp int64, 
-						key string, value string) Transaction {
-	transaction := Transaction{hash, parentHash, timestamp, key, value}
+func RestoreTransaction(hash, parentHash string, timestamp int64, 
+						membershipID, key, value string) Transaction {
+	transaction := Transaction{hash, parentHash, timestamp, membershipID, key, value}
 	return transaction
 }
 
-// SetHash sets the hash of a transaction
-func (t *Transaction) SetHash() {
-	jsonBytes, _ := json.Marshal(t)
-	hash := sha256.Sum256(jsonBytes)
-	t.Hash = hex.EncodeToString(hash[:])
-}
 
-// Print print the every value of the transaction as a string
-func (t Transaction) Print() {
-	tx, _ := json.MarshalIndent(t, "", "  ")
-	fmt.Println(string(tx))
-}
 
 // PrintAll prints all the transactions in the slice
 func PrintAll(txs []Transaction) {
@@ -320,7 +240,7 @@ func SortAndHash(txs []Transaction) string {
 	for i := range txs {
 		buffer.Write([]byte(txs[i].Hash))
 	}
-	hash := sha256.Sum256(buffer.Bytes())
+	hash := sha1.Sum(buffer.Bytes())
 	return hex.EncodeToString(hash[:])
 }
 
@@ -339,33 +259,31 @@ func (app *ABCIApp) InsertFromJSON(jsonInput []byte) {
 	// convert the JSON to structs
 	var tx Transaction
 	err := json.Unmarshal(jsonInput, &tx)
-	fmt.Printf("%+v", tx)
 	if err != nil {
 		panic(err)
 	}
 
-	// SortbyDate(txs)
+
+	if tx.MembershipID == "" {
+		tx.MembershipID = app.membershipID
+	}
 
 	// Use search function to see if transaction exist already
 	// If not, insert into cayley by finding the previous tx
-	if app.Search(tx.Hash) == nil {
+	if app.ledger.Search(tx.Hash) == nil {
 
 		// What if previous Hash does not exist
 		// Find the previous Transaction
-		prevTx := app.Search(tx.ParentHash)
+		prevTx := app.ledger.Search(tx.ParentHash)
 
 		if prevTx == nil {
-			fmt.Println("TODO: Could not insert b/c previous transaction is not in the database. Skipping this Tx")
-			// I think we can just insert the tranaction with prev. Tx as nil
-			// Would create an unconnected side chain which will become connected later at some point
-			// The graph iterator will still find this unconnected transaction
-			// continue
+			app.log.Warningf("parentHash does not exist: %s", tx.ParentHash)
 		}
 
-		app.ledger.insertTx(&tx, prevTx.Hash)
-		fmt.Println("Transaction inserted")
+		app.ledger.insertTx(&tx)
+		app.log.Debug("Transaction inserted")
 	} else {
-		fmt.Println("Transaction exists")
+		app.log.Info("Transaction exists, skipping insertion!")
 	}
 }
 
