@@ -1,16 +1,17 @@
 package main
 
 import (
-    "context"
-    "fmt"
-    "io/ioutil"
-    "log"
+	"strings"
+	"context"
+	"fmt"
+	"io/ioutil"
+	"log"
 
-    "github.com/cayleygraph/cayley"
-    "github.com/cayleygraph/cayley/graph"
-    . "github.com/cayleygraph/cayley/graph/path"
-    _ "github.com/cayleygraph/cayley/graph/kv/bolt"
-    "github.com/cayleygraph/cayley/quad"
+	"github.com/cayleygraph/cayley"
+	"github.com/cayleygraph/cayley/graph"
+	. "github.com/cayleygraph/cayley/graph/path"
+	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
+	"github.com/cayleygraph/cayley/quad"
 )
 
 func main() {
@@ -28,9 +29,9 @@ func main() {
     fmt.Println("*** iterator printout below ***")
 
     p := cayley.StartPath(store, quad.String("tx1")).FollowRecursive(
-            StartMorphism().In("follows"), 0, nil)
+            StartMorphism().In("follows"), 0, nil).
+            HasReverse(quad.String("membershipID"))
     it, _ := p.BuildIterator().Optimize()
-    it, _ = store.OptimizeIterator(it)
     defer it.Close()
 
     ctx := context.TODO()
@@ -38,10 +39,21 @@ func main() {
     for it.Next(ctx) {
         fmt.Println(store.NameOf(it.Result())) // print it!
     }
-    
+    txHash := strings.Trim(store.NameOf(it.Result()).String(), "\"")
+    p = cayley.StartPath(store, quad.String(txHash)).
+        In(quad.String("membershipID"))
+    mid, _ := p.Iterate(nil).FirstValue(nil)
+    membershipID := strings.Trim(mid.String(), "\"")
+    fmt.Println("mid is " + membershipID)
+
+
+
+
     if err := it.Err(); err != nil {
         log.Fatalln(err)
     }
+
+    fmt.Println("Make sure to delete db.boltdb/")
 }
 
 // countOuts ... well, counts Outs
@@ -85,7 +97,7 @@ func initializeAndOpenGraph(atLoc string) *cayley.Handle {
 
     // Open and use the database
     store, err := cayley.NewGraph("bolt", atLoc, nil)
-    if err != nil {
+    if err != nil{ 
         log.Fatalln(err)
     }
 
@@ -110,4 +122,8 @@ func addQuads(store *cayley.Handle) {
     store.AddQuad(quad.Make("3", "value", "tx3", "ledger"))
     store.AddQuad(quad.Make("tx4", "follows", "tx3", "ledger"))
     store.AddQuad(quad.Make("4", "value", "tx4", "ledger"))
-}
+    store.AddQuad(quad.Make("abcdef", "membershipID", "tx1", "ledger"))
+    store.AddQuad(quad.Make("abcdef", "membershipID", "tx2", "ledger"))
+    store.AddQuad(quad.Make("abcdef", "membershipID", "tx4", "ledger"))
+    store.AddQuad(quad.Make("myKey", "key", "tx4", "ledger"))
+}   
