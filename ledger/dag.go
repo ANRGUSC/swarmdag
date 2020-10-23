@@ -14,13 +14,10 @@ import (
 	"github.com/cayleygraph/cayley/graph"
     "github.com/cayleygraph/cayley/graph/path"
 	"github.com/cayleygraph/quad"
+    "github.com/libp2p/go-libp2p-core/host"
+    pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
 )
-
-type Ledger struct {
-    DB *cayley.Handle
-    log *logging.Logger
-}
 
 type Transaction struct {
     Hash         string `json:"hash" quad:"hash"`
@@ -31,13 +28,18 @@ type Transaction struct {
     Value        string `json:"value" quad:"value"`
 }
 
+type DAG struct {
+    DB *cayley.Handle
+    log *logging.Logger
+}
+
 var (
     headTx string
     headTxLock = &sync.Mutex{}
     headTxMembershipID string
 )
 
-func NewLedger(log *logging.Logger) *Ledger {
+func NewDAG(log *logging.Logger, host host.Host, psub *pubsub.PubSub) *DAG {
     // File for your new BoltDB. Use path to regular file and not temporary in the real world
     tmpdir, err := ioutil.TempDir("", "cayleyFiles")
     if err != nil {
@@ -56,7 +58,7 @@ func NewLedger(log *logging.Logger) *Ledger {
         panic(err)
     }
 
-    ledger := &Ledger{
+    d := &DAG{
         DB: db,
         log: log,
     }
@@ -72,23 +74,23 @@ func NewLedger(log *logging.Logger) *Ledger {
 
     genesis.setHash()
     headTx = genesis.Hash
-    ledger.insertTx(&genesis)
+    d.insertTx(&genesis)
 
     LatestTransaction = (&genesis)
     genesis.Print()
 
-    return ledger
+    return d
 }
 
-func (l *Ledger) insertTx (tx *Transaction) {
+func (d *DAG) insertTx (tx *Transaction) {
     headTxLock.Lock()
     if tx.ParentHash == "" {
-        // typical append to ledger (not a reconciling insert)
+        // typical append to DAG (not a reconciling insert)
         if (tx.Key != "alphatx") && (headTxMembershipID != tx.MembershipID) {
-            l.log.Fatal("appending to tx with different membership ID!")
+            d.log.Fatal("appending to tx with different membership ID!")
         }
         if tx.Hash != "" {
-            l.log.Fatal("tx hash should not be set on a typical append!")
+            d.log.Fatal("tx hash should not be set on a typical append!")
         }
         tx.ParentHash = headTx
         tx.setHash()
@@ -101,9 +103,9 @@ func (l *Ledger) insertTx (tx *Transaction) {
     t.AddQuad(quad.Make(tx.Hash, "membershipID", tx.MembershipID , nil))
     t.AddQuad(quad.Make(tx.Hash, "key", tx.Key , nil))
     t.AddQuad(quad.Make(tx.Hash, "value", tx.Value , nil))
-    err := l.DB.ApplyTransaction(t)
+    err := d.DB.ApplyTransaction(t)
     if err != nil {
-        l.log.Fatal(err)
+        d.log.Fatal(err)
     }
     headTxLock.Unlock()
 }
@@ -122,14 +124,14 @@ func (t Transaction) Print() {
 }
 
 // Get hash of tip of membership chain
-func (l *Ledger) GetTip(membershipID string) string {
+func (d *DAG) GetTip(membershipID string) string {
     // Grab a tx with this membershipID and start iterating from there
-    p := cayley.StartPath(l.DB, quad.String(membershipID)).
+    p := cayley.StartPath(d.DB, quad.String(membershipID)).
         In(quad.String("membershipID"))
     tx, _ := p.Iterate(nil).FirstValue(nil)
     txHash := strings.Trim(tx.String(), "\"")
 
-    p = cayley.StartPath(l.DB, quad.String(txHash)).
+    p = cayley.StartPath(d.DB, quad.String(txHash)).
         FollowRecursive(path.StartMorphism().In("parentHash"), 0, nil).
         HasReverse(quad.String("membershipID"), quad.String(membershipID))
     it, _ := p.BuildIterator().Optimize()
@@ -138,14 +140,14 @@ func (l *Ledger) GetTip(membershipID string) string {
 
     ctx := context.TODO()
     for it.Next(ctx) {}  // iterate until we get the head Tx
-    hash := strings.Trim(l.DB.NameOf(it.Result()).String(), "\"")
+    hash := strings.Trim(d.DB.NameOf(it.Result()).String(), "\"")
     return hash
 }
 
 // Search returns nil if not found
-func (l *Ledger) Search(hash string) *Transaction {
+func (d *DAG) Search(hash string) *Transaction {
     var tx *Transaction = nil
-    p := cayley.StartPath(l.DB).Tag("hash").
+    p := cayley.StartPath(d.DB).Tag("hash").
         Has(quad.String("timestamp")).
         Save("parentHash", "parentHash").
         Save("timestamp", "timestamp").
@@ -165,14 +167,14 @@ func (l *Ledger) Search(hash string) *Transaction {
         }
     })
     if err != nil {
-        l.log.Critical(err)
+        d.log.Critical(err)
     }
     return tx
 }
 
 // ReturnAll returns every transactions
-func (l *Ledger) ReturnAll() []Transaction {
-    p := cayley.StartPath(l.DB).Tag("hash").
+func (d *DAG) ReturnAll() []Transaction {
+    p := cayley.StartPath(d.DB).Tag("hash").
         Has(quad.String("timestamp")).
         Save("parentHash", "parentHash").
         Save("timestamp", "timestamp").
@@ -192,12 +194,12 @@ func (l *Ledger) ReturnAll() []Transaction {
         })
     })
     if err != nil {
-        l.log.Critical(err)
+        d.log.Critical(err)
     }
     return txs
 }
 
-func (l *Ledger) CreateAlphaTx(membershipID string) {
+func (d *DAG) CreateAlphaTx(membershipID string) {
     alpha := Transaction{
         Hash:           "",
         ParentHash:     "",
@@ -206,6 +208,6 @@ func (l *Ledger) CreateAlphaTx(membershipID string) {
         Key:            "alphatx",
         Value:          "alphatx",
     }
-    l.insertTx(&alpha)
+    d.insertTx(&alpha)
 }
 
