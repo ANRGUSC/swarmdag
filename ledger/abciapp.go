@@ -19,18 +19,18 @@ import (
 
 // ABCIApp stores db and current struct
 type ABCIApp struct {
-	ledger       *Ledger
-	currentBatch quad.Quad
-	log			 *logging.Logger
-	membershipID string
-	headHash	 string
+	dag       		*DAG
+	currentBatch 	quad.Quad
+	log			 	*logging.Logger
+	membershipID 	string
+	headHash	 	string
 }
 
 // NewABCIApp creates new Instance
-func NewABCIApp(ledger *Ledger, log *logging.Logger, membershipID string) *ABCIApp {
-	ledger.CreateAlphaTx(membershipID)
+func NewABCIApp(dag *DAG, log *logging.Logger, membershipID string) *ABCIApp {
+	dag.CreateAlphaTx(membershipID)
     return &ABCIApp{
-    	ledger: ledger,
+    	dag: dag,
     	log: log,
     	membershipID: membershipID,
     }
@@ -117,7 +117,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 		fmt.Println("Incoming Transactions are enabled.")
 	} else if string(reqQuery.Data) == "returnAll" {
 
-		txs := app.ledger.ReturnAll()
+		txs := app.dag.ReturnAll()
 		PrintAll(txs)
 		SortbyDate(txs)
 		result := ReturnJSON(txs)
@@ -137,7 +137,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 			resQuery.Log = "Error: Cannot convert Hash"
 			return
 		}
-		tx := app.ledger.Search(string(hash))
+		tx := app.dag.Search(string(hash))
 		if tx == nil {
 			resQuery.Log = "Error: Cannot find Transaction"
 			return
@@ -150,7 +150,7 @@ func (app *ABCIApp) Query(reqQuery abcitypes.RequestQuery) (resQuery abcitypes.R
 		resQuery.Value = []byte(out)
 		resQuery.Log = "Found Transaction"
 	} else if string(reqQuery.Data) == "returnHash" {
-		txs := app.ledger.ReturnAll()
+		txs := app.dag.ReturnAll()
 		hash := SortAndHash(txs)
 		PrintAll(txs)
 		fmt.Println(base64.StdEncoding.EncodeToString([]byte(hash)))
@@ -195,7 +195,7 @@ func (app *ABCIApp) isValid(tx []byte) (code uint32) {
 
 // Insert adds a new transction to the DAG
 func (app *ABCIApp) Insert(tx Transaction, prevTx Transaction) error {
-	err := app.ledger.DB.AddQuad(quad.Make(tx, "follows", prevTx, nil))
+	err := app.dag.DB.AddQuad(quad.Make(tx, "follows", prevTx, nil))
 	
 	LatestTransaction = (&tx)
 	return err
@@ -270,17 +270,17 @@ func (app *ABCIApp) InsertFromJSON(jsonInput []byte) {
 
 	// Use search function to see if transaction exist already
 	// If not, insert into cayley by finding the previous tx
-	if app.ledger.Search(tx.Hash) == nil {
+	if app.dag.Search(tx.Hash) == nil {
 
 		// What if previous Hash does not exist
 		// Find the previous Transaction
-		prevTx := app.ledger.Search(tx.ParentHash)
+		prevTx := app.dag.Search(tx.ParentHash)
 
 		if prevTx == nil {
 			app.log.Warningf("parentHash does not exist: %s", tx.ParentHash)
 		}
 
-		app.ledger.insertTx(&tx)
+		app.dag.insertTx(&tx)
 		app.log.Debug("Transaction inserted")
 	} else {
 		app.log.Info("Transaction exists, skipping insertion!")
