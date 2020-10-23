@@ -23,8 +23,6 @@ func init() {
 
 func main() {
     flag.Parse()
-    // TODO: removeme
-    membership.SetID(nodeID)
     // TODO: need to synchronize the config file copying and stuff
 
     // Create a node interface/struct. Then, initialize all the 
@@ -35,7 +33,7 @@ func main() {
         // secondMID = "cccccc"
     }
 
-    ledger := ledger.NewLedger(log)
+    ledger := ledger.NewDAG(log)
     // initiate partition manager
     pm := partition.NewManager(nodeID, log, ledger)
     pm.NewNetwork(viewID, membershipID)
