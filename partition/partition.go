@@ -19,7 +19,6 @@ import (
 	tmtime "github.com/tendermint/tendermint/types/time"
 
 	logging "github.com/op/go-logging"
-	"github.com/ANRGUSC/swarmdag/membership"
     "github.com/ANRGUSC/swarmdag/ledger"
     abciserver "github.com/tendermint/tendermint/abci/server"
     "github.com/tendermint/tendermint/libs/service"
@@ -32,6 +31,13 @@ var ipPrefix = "192.168.10" // prefix for all containers
 var idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4
 var tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
 
+type MembershipInfo struct {
+    ID          string
+    ViewID      int
+    NodeIDs     []int
+    AmLeader    bool
+}
+
 type Manager interface {
     NewNetwork(viewID int, membershipID string)
 }
@@ -40,26 +46,26 @@ type manager struct {
     nodeID      int
     log         *logging.Logger
     instances   map[*tmn.Node]service.Service
-    ledger      *ledger.Ledger
+    dag         *ledger.DAG
 }
 
-func NewManager (nodeID int, log *logging.Logger, ledger *ledger.Ledger) Manager {
+func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
     m := &manager {
         nodeID: nodeID,
         log: log,
-        ledger: ledger,
+        dag: dag,
     }
     return m
 }
 
 // Membership manager should be able to call this on new view installation
-func (m *manager) NewNetwork(viewID int, membershipID string) {
+func (m *manager) NewNetwork(info MembershipInfo) {
     // Stop all old instances for a clean start
     m.stopOldNetworks()
 
     // start ABCI app
-    appAddr := fmt.Sprintf("0.0.0.0:200%d", viewID % 100)
-    app := ledger.NewABCIApp(m.ledger, m.log, membershipID)
+    appAddr := fmt.Sprintf("0.0.0.0:200%d", info.ViewID % 100)
+    app := ledger.NewABCIApp(m.dag, m.log, info.ID)
     server := abciserver.NewSocketServer(appAddr, app)
     logger := tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
     logger, _ = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
@@ -69,7 +75,7 @@ func (m *manager) NewNetwork(viewID int, membershipID string) {
     }
 
     // start tendermint
-    node, err := m.newTendermint(appAddr, viewID, membershipID)
+    node, err := m.newTendermint(appAddr, info.ViewID, info.ID)
     if err != nil {
         m.log.Fatalf("error starting new tendermint net: %v", err)
     }
@@ -95,18 +101,18 @@ func (m *manager) stopOldNetworks() {
     }
 }
 
-// RPC port 30XX, P2P port 40XX -- where XX = viewID % 100
-func (m *manager) newTendermint(appAddr string, viewID int, membershipID string) (*tmn.Node, error) {
+// RPC port 30XX, P2P port 40XX -- where XX = MembershipInfo.ViewID % 100
+func (m *manager) newTendermint(appAddr string, info MembershipInfo) (*tmn.Node, error) {
     config := cfg.DefaultConfig()
-    membershipDir := fmt.Sprintf("tmp/%s/node%d/config", membershipID, m.nodeID)
+    membershipDir := fmt.Sprintf("tmp/%s/node%d/config", info.ID, m.nodeID)
     config.RootDir = filepath.Dir(filepath.Join(rootDirStart, membershipDir))
     m.log.Debugf("My root dir is %s", config.RootDir)
 
-    nValidators := membership.GetNodeCount(membershipID)
+    nValidators := len(info.NodeIDs)
     genVals := make([]types.GenesisValidator, nValidators)
     persistentPeers := make([]string, nValidators)
 
-    for i, nodeID := range membership.GetNodeIDs(membershipID) {
+    for i, nodeID := range info.NodeIDs {
         nodeName := fmt.Sprintf("node%d", nodeID)
         nodeDir := filepath.Join(rootDirStart, "templates", nodeName)
 
@@ -136,19 +142,19 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
 
         persistentPeers[i] = p2p.IDAddressString(nodeKey.ID(), 
             fmt.Sprintf("%s.%d:400%d", ipPrefix, nodeID + idToIPOffset, 
-                viewID % 100))
+                info.ViewID % 100))
     }
 
-    if membership.AmLeader(membershipID) {
+    if info.AmLeader {
         // Write genesis file for all nodes to keep genesis time constant
         genDoc := &types.GenesisDoc{
-            ChainID:         "chain-" + membershipID,
+            ChainID:         "chain-" + info.ID,
             ConsensusParams: types.DefaultConsensusParams(),
             GenesisTime:     tmtime.Now(),
             Validators:      genVals,
         }
 
-        for _, nodeID := range membership.GetNodeIDs(membershipID) {
+        for _, nodeID := range info.NodeIDs {
             nodeDir := filepath.Join(filepath.Dir(config.RootDir), fmt.Sprintf("node%d", nodeID))
             os.MkdirAll(nodeDir + "/config", 0755)
             if err := genDoc.SaveAs(filepath.Join(nodeDir, config.BaseConfig.Genesis)); err != nil {
@@ -171,8 +177,8 @@ func (m *manager) newTendermint(appAddr string, viewID int, membershipID string)
     }
 
     // containers
-    config.RPC.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:300%d", viewID % 100)
-    config.P2P.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:400%d", viewID % 100)
+    config.RPC.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:300%d", info.ViewID % 100)
+    config.P2P.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:400%d", info.ViewID % 100)
     config.P2P.AddrBookStrict = false
     config.P2P.AllowDuplicateIP = true
     config.P2P.PersistentPeers = strings.Join(persistentPeers, ",")
