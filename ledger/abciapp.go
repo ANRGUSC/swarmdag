@@ -22,17 +22,17 @@ type ABCIApp struct {
 	dag       		*DAG
 	currentBatch 	quad.Quad
 	log			 	*logging.Logger
-	membershipID 	string
+	chainID 	string
 	headHash	 	string
 }
 
 // NewABCIApp creates new Instance
-func NewABCIApp(dag *DAG, log *logging.Logger, membershipID string) *ABCIApp {
-	dag.CreateAlphaTx(membershipID)
+func NewABCIApp(dag *DAG, log *logging.Logger, chainID string) *ABCIApp {
+	dag.CreateAlphaTx(chainID)
     return &ABCIApp{
     	dag: dag,
     	log: log,
-    	membershipID: membershipID,
+    	chainID: chainID,
     }
 }
 
@@ -196,15 +196,15 @@ func (app *ABCIApp) isValid(tx []byte) (code uint32) {
 // Insert adds a new transction to the DAG
 func (app *ABCIApp) Insert(tx Transaction, prevTx Transaction) error {
 	err := app.dag.DB.AddQuad(quad.Make(tx, "follows", prevTx, nil))
-	
+
 	LatestTransaction = (&tx)
 	return err
 }
 
 //RestoreTransaction restores a transaction fetched from the DAG
-func RestoreTransaction(hash, parentHash string, timestamp int64, 
-						membershipID, key, value string) Transaction {
-	transaction := Transaction{hash, parentHash, timestamp, membershipID, key, value}
+func RestoreTransaction(hash, parentHash string, timestamp int64,
+						chainID, key, value string) Transaction {
+	transaction := Transaction{hash, parentHash, timestamp, chainID, key, value}
 	return transaction
 }
 
@@ -233,7 +233,7 @@ func SortbyDate(txs []Transaction) {
 
 //SortAndHash sorts the array and returns the Hash
 func SortAndHash(txs []Transaction) string {
-	// TODO: determine if this sort and hash will provide consistent results 
+	// TODO: determine if this sort and hash will provide consistent results
 	// across network
 	SortbyDate(txs)
 	var buffer bytes.Buffer
@@ -265,7 +265,7 @@ func (app *ABCIApp) InsertFromJSON(jsonInput []byte) {
 
 
 	if tx.MembershipID == "" {
-		tx.MembershipID = app.membershipID
+		tx.MembershipID = app.chainID
 	}
 
 	// Use search function to see if transaction exist already
@@ -280,7 +280,7 @@ func (app *ABCIApp) InsertFromJSON(jsonInput []byte) {
 			app.log.Warningf("parentHash does not exist: %s", tx.ParentHash)
 		}
 
-		app.dag.insertTx(&tx)
+		app.dag.InsertTx(&tx)
 		app.log.Debug("Transaction inserted")
 	} else {
 		app.log.Info("Transaction exists, skipping insertion!")

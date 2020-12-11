@@ -14,13 +14,16 @@ RUN apk update && \
     apk upgrade && \
     apk --no-cache add curl jq bash
 
-# When using LXCs in CORE, each container has access to the host machine's 
+# When using LXCs in CORE, each container has access to the host machine's
 # filesystem. This Docker container will pretend to have a $GOPATH for cross
 # compatibility.
 ENV GOPATH /fakego
 
-VOLUME [ $GOPATH/src/github.com/ANRGUSC/swarmdag/build/ ]
+RUN mkdir -p $GOPATH/src/github.com/ANRGUSC/swarmdag/build/
 WORKDIR $GOPATH/src/github.com/ANRGUSC/swarmdag/build
+
+RUN umask 0000
+RUN chmod 755 $GOPATH/src/github.com/ANRGUSC/swarmdag/build/
 
 # p2p and rpc port
 EXPOSE 2000-5000

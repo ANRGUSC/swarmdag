@@ -12,7 +12,8 @@ TENDERMINT_VER=0.33.2
 gen-keys:
 	@if [ -d .build/templates ]; then rm -rf ./build/templates/node*; fi
 	@if [ ! -d ./build/templates/ ]; then mkdir -p ./build/templates; fi
-	./build/tendermint testnet --v 50 --o ./build/templates
+	./build/tendermint testnet --v 4 --o ./build/templates
+	go run tools/keygen.go -n 4 -o ./build/templates/
 
 get-tendermint:
 	@if [ ! -d ./build ]; then mkdir build/; fi
@@ -25,12 +26,12 @@ get-tendermint:
 
 build-docker:
 	docker build -t "anrg/swarmdag" ./DOCKER/
-	
+
 push:
 	docker push "anrg/swarmdag"
 
 build:
-	CGO_ENABLED=0 go build -o ./build/swarmdag ./cmd/partition_manager/main.go
+	CGO_ENABLED=0 go build -o ./build/swarmdag ./cmd/swarmdag/main.go
 
 local:
 	docker-compose up
