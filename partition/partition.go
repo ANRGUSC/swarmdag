@@ -6,7 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-    "time"
+	"time"
 
 	cfg "github.com/tendermint/tendermint/config"
 	tmflags "github.com/tendermint/tendermint/libs/cli/flags"
@@ -17,22 +17,26 @@ import (
 	"github.com/tendermint/tendermint/proxy"
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
-    "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/peer"
 
 	logging "github.com/op/go-logging"
-    "github.com/ANRGUSC/swarmdag/ledger"
-    abciserver "github.com/tendermint/tendermint/abci/server"
-    "github.com/tendermint/tendermint/libs/service"
-    tmlog "github.com/tendermint/tendermint/libs/log"
+	"github.com/ANRGUSC/swarmdag/ledger"
+	abciserver "github.com/tendermint/tendermint/abci/server"
+	"github.com/tendermint/tendermint/libs/service"
+	tmlog "github.com/tendermint/tendermint/libs/log"
+    rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 )
 
-var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
-// var ipPrefix = "0.0.0"
-var ipPrefix = "192.168.10" // prefix for all containers
-var idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4 , 2 works for docker, core not yet finished
-var tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
+const (
+    // ipPrefix = "0.0.0"
+    ipPrefix = "192.168.10" // prefix for all containers
+    idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4 , 2 works for docker, core not yet finished
+    tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
+    abciAppAddr = "0.0.0.0:20000"
+)
+ var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 
-type MembershipInfo struct {
+type NetworkInfo struct {
     ViewID          int
     ChainID         string
     MemberNodeIDs   []int
@@ -42,7 +46,7 @@ type MembershipInfo struct {
 }
 
 type Manager interface {
-    NewNetwork(info MembershipInfo)
+    NewNetwork(info NetworkInfo)
 }
 
 type manager struct {
@@ -56,25 +60,35 @@ func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
     m := &manager {
         nodeID: nodeID,
         log: log,
-        instances: make(map[*tmn.Node]service.Service),
+        instances: make(map[*tmn.Node]service.Service, 1),
         dag: dag,
     }
     return m
 }
 
-// Membership manager should be able to call this on new view installation
-func (m *manager) NewNetwork(info MembershipInfo) {
-    if info.ReconcileNeeded {
-        ledger.Reconcile(info.Libp2pIDs, m.dag, m.log)
+// To be called by Membership Manager upon view installation
+func (m *manager) NewNetwork(info NetworkInfo) {
+    // stop all Txs to allow reconciliation process
+    if len(m.instances) > 0 {
+        c, _ := rpchttp.New("tcp://0.0.0.0:30000", "")
+        cmd := []byte("disableTx")
+        _, err := c.ABCIQuery("", cmd)
+        if err != nil {
+            panic("disableTx failed: " + err.Error())
+        }
     }
 
-    // Stop all old instances for a clean start
+
+    if info.ReconcileNeeded {
+        // barrier point: requires 100% partition agreement before returning
+        ledger.Reconcile(info.Libp2pIDs, info.AmLeader, m.dag, m.log)
+    }
+    m.dag.Idx.InsertChainID(info.ChainID)
     m.stopOldNetworks()
 
     // start ABCI app
-    appAddr := fmt.Sprintf("0.0.0.0:200%d", info.ViewID % 100)
     app := ledger.NewABCIApp(m.dag, m.log, info.ChainID)
-    server := abciserver.NewSocketServer(appAddr, app)
+    server := abciserver.NewSocketServer(abciAppAddr, app)
     logger := tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
     logger, _ = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
     server.SetLogger(logger)
@@ -83,44 +97,31 @@ func (m *manager) NewNetwork(info MembershipInfo) {
     }
 
     // start tendermint
-    node, err := m.newTendermint(appAddr, info)
+    node, err := m.newTendermint(abciAppAddr, info)
     if err != nil {
         m.log.Fatalf("error starting new tendermint net: %v", err)
     }
 
     node.Start()
     m.instances[node] = server
-
-    m.dag.Idx.InsertChainID(info.ChainID)
 }
 
 func (m *manager) stopOldNetworks() {
-
     for node, server := range m.instances {
         m.log.Infof("Stopping network instance %p", node)
         node.Stop()
-        node.Wait() //TODO: does this wait for a block in a round to finish?
+        node.Wait() // does this wait for a block in a round to finish?
         delete(m.instances, node)
-        // TODO: decide on truncation (essentially dequeue block in the queue set inside the abciapp)
-
-
-        // TODO: if a merge reconcile ledger (maybe through a passed flag by membership)
-
-
-        // - gossip mID with a hash ofallTxs
-        // - if discrepancy found, gossip back a request with LAST block you know of
-        //   in that membership id. a response should be given with all missing blocks
         if err := server.Stop(); err != nil {
             m.log.Fatalf("error starting socket server: %v\n", err)
         }
     }
 }
 
-// RPC port 30XX, P2P port 40XX -- where XX = MembershipInfo.ViewID % 100
-func (m *manager) newTendermint(appAddr string, info MembershipInfo) (*tmn.Node, error) {
+func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, error) {
     config := cfg.DefaultConfig()
-    membershipDir := fmt.Sprintf("tmp/chain-%s/node%d/config", info.ChainID, m.nodeID)
-    config.RootDir = filepath.Dir(filepath.Join(rootDirStart, membershipDir))
+    chainDir := fmt.Sprintf("tmp/chain-%s/node%d/config", info.ChainID, m.nodeID)
+    config.RootDir = filepath.Dir(filepath.Join(rootDirStart, chainDir))
     m.log.Debugf("My root dir is %s", config.RootDir)
 
     nValidators := len(info.MemberNodeIDs)
@@ -156,8 +157,7 @@ func (m *manager) newTendermint(appAddr string, info MembershipInfo) (*tmn.Node,
         }
 
         persistentPeers[i] = p2p.IDAddressString(nodeKey.ID(),
-            fmt.Sprintf("%s.%d:400%d", ipPrefix, nodeID + idToIPOffset,
-                info.ViewID % 100))
+            fmt.Sprintf("%s.%d:40000", ipPrefix, nodeID + idToIPOffset))
     }
 
     if info.AmLeader {
@@ -208,8 +208,8 @@ func (m *manager) newTendermint(appAddr string, info MembershipInfo) (*tmn.Node,
     }
 
     // containers
-    config.RPC.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:300%d", info.ViewID % 100)
-    config.P2P.ListenAddress = fmt.Sprintf("tcp://0.0.0.0:400%d", info.ViewID % 100)
+    config.RPC.ListenAddress = "tcp://0.0.0.0:30000"
+    config.P2P.ListenAddress = "tcp://0.0.0.0:40000"
     config.P2P.AddrBookStrict = false
     config.P2P.AllowDuplicateIP = true
     config.P2P.PersistentPeers = strings.Join(persistentPeers, ",")

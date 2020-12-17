@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"fmt"
 	"time"
 	"context"
 	"encoding/json"
@@ -36,12 +37,12 @@ type pendingPull struct {
 }
 
 type reconciler struct {
+	amLeader bool
 	dag *DAG
 	peerRepeats	map[peer.ID]int
 	log *logging.Logger
 	newPullCh chan pendingPull
 }
-
 
 func createMsg(index Index) reconcileMsg {
 	chainInfo := index.CompileChainInfo()
@@ -154,44 +155,64 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 }
 
 func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
-	sub, _ := r.dag.psub.Subscribe("reconciler")
+	sub, _ := r.dag.psub.Subscribe(topic)
 
 	var rMsg reconcileMsg
 	for {
 		m, _ := sub.Next(ctx)
 		srcID := m.ReceivedFrom
-		if srcID == r.dag.host.ID() {
+		json.Unmarshal(m.Data, &rMsg)
+		if rMsg.MsgType == "finished" {
+			// received finished from leader
+			return
+		} else if rMsg.MsgType != "bcast" {
 			continue
 		}
-		err := json.Unmarshal(m.Data, &rMsg)
-		if err != nil || rMsg.MsgType != "bcast" {
-			continue
-		}
-
 		if (rMsg.LedgerHash == r.dag.Idx.HashLedger()) {
 			r.peerRepeats[srcID]++
 		} else {
+			fmt.Println("send pull req")
 			r.sendPullReq(srcID, rMsg)
 			r.peerRepeats[srcID] = 0
 		}
 
 		// stop reconciliation if same msg rcvd received enough times
-		for _, repeats := range r.peerRepeats {
-			if repeats < repeatsRequired {
+		if r.amLeader {
+			var notFinished bool
+			for s, repeats := range r.peerRepeats {
+				if repeats < repeatsRequired {
+					notFinished = true
+				}
+			}
+			if notFinished {
 				continue
 			}
+			fin := createMsg(r.dag.Idx)
+			fin.MsgType = "finished"
+			f, _ := json.Marshal(fin)
+			r.dag.psub.Publish(topic, f)
+			return
 		}
-		return
 	}
 }
 
-func Reconcile(libp2pIDs []peer.ID, dag *DAG, log *logging.Logger) error {
+func Reconcile(
+	libp2pIDs []peer.ID,
+	amLeader bool,
+	dag *DAG,
+	log *logging.Logger,
+) error {
+	// TODO: need to take care of case of singular membership
+	log.Info("Begin reconciler process")
 	peerRepeats := make(map[peer.ID]int, len(libp2pIDs))
 	for _, id := range libp2pIDs {
 		peerRepeats[id] = 0
 	}
 
+	fmt.Printf("%+v\n", peerRepeats)
+
 	r := reconciler {
+		amLeader: amLeader,
 		peerRepeats: peerRepeats,
 		dag: dag,
 		log: log,

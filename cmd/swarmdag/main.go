@@ -3,8 +3,16 @@ package main
 import (
 	"syscall"
 	"time"
+    "fmt"
+    "encoding/json"
 	"github.com/ANRGUSC/swarmdag/node"
     "github.com/ANRGUSC/swarmdag/membership"
+    rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+    "github.com/ANRGUSC/swarmdag/ledger"
+)
+
+const (
+    txInterval = 5 * time.Second
 )
 
 func main() {
@@ -27,5 +35,24 @@ func main() {
     }
 
 	node.NewNode(cfg, 8001, "./templates/keys.json")
-	select {}
+
+    c, _ := rpchttp.New("tcp://0.0.0.0:30000", "")
+    i := 0
+    for {
+        tx := ledger.Transaction {
+                Hash: "",
+                ParentHash: "",
+                Timestamp: time.Now().Unix(),
+                MembershipID: "",
+                Key: fmt.Sprintf("k%d", i),
+                Value: fmt.Sprintf("v%d", i),
+            }
+        txBytes, _ := json.Marshal(tx)
+        _, err := c.BroadcastTxCommit(txBytes)
+        if err != nil {
+            fmt.Println(err)
+        }
+        time.Sleep(txInterval)
+        i++
+    }
 }

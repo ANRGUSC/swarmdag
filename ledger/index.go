@@ -59,6 +59,9 @@ func (idx *index) InsertChainID(id string) {
 func (idx *index) InsertTxHash(chainID, txHash string) {
 	idx.lock.Lock()
 	defer idx.lock.Unlock()
+	if _, exists := idx.ledgerMap[chainID]; !exists {
+		idx.ledgerMap[chainID] = []string{}
+	}
 	i := sort.SearchStrings(idx.ledgerMap[chainID], txHash)
 	if i < len(idx.ledgerMap[chainID]) && idx.ledgerMap[chainID][i] == txHash {
 		return

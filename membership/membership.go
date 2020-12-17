@@ -326,10 +326,12 @@ func (m *manager) leadProposal() {
                 nextMembershipListLock.Unlock()
 
                 // Let two broadcasts with "INSTALL_VIEW" before starting TM
+                // libp2p gossipsub should ensure 100% reliability
                 time.Sleep(2 * m.conf.BroadcastPeriod)
 
                 m.installMembershipView(m.nextMembershipList, m.host.ID().String())
                 m.proposeRoutineCh<-"RESET"
+                sub.Cancel()
                 return
             }
         }
@@ -346,6 +348,7 @@ func (m *manager) leadProposal() {
             m.proposeRoutineCh<-"RESET"
             voteTableBroadcastCh<-"STOP_VTABLE_BCAST"
             done <- true
+            sub.Cancel()
             return
         case <-newMsg:
             done <- true
@@ -360,6 +363,7 @@ func (m *manager) leadProposal() {
         if mlist["LEADER_EXISTS"] == 1 {
             m.proposeRoutineCh<-"RESET"
             voteTableBroadcastCh<-"STOP_VTABLE_BCAST"
+            sub.Cancel()
             return
         }
 
@@ -380,6 +384,7 @@ func (m *manager) leadProposal() {
             if (float32(numNACKs) / float32(nmlistLen - 2)) >
                     (1.0 - m.conf.MajorityRatio) {
                 m.proposeRoutineCh<-"RESET"
+                sub.Cancel()
                 return
             }
             continue
@@ -403,6 +408,8 @@ func (m *manager) leadProposal() {
 
         numVotes += 1
     }
+
+    sub.Cancel()
 }
 
 func (m *manager) checkMembershipChange() bool {
@@ -736,9 +743,9 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
         amLeader = false
     }
 
-    info := partition.MembershipInfo {
-        ChainID: m.membershipID,
+    info := partition.NetworkInfo {
         ViewID: viewID,
+        ChainID: m.membershipID,
         MemberNodeIDs: memberNodeIDs,
         Libp2pIDs: memberLibp2pIDs,
         AmLeader: amLeader,

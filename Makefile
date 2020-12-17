@@ -1,4 +1,4 @@
-TENDERMINT_VER=0.33.2
+TENDERMINT_VER=0.33.5
 
 # TODO: cleanup cayleygraph db instances, clean up partition information.
 

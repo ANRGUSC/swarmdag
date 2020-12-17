@@ -1,9 +1,10 @@
 package ledger
 
 import (
-    "time"
+	"time"
 	"context"
 	"strings"
+	"sort"
 	"fmt"
 	"encoding/hex"
 	"encoding/json"
@@ -12,13 +13,15 @@ import (
 	"io/ioutil"
 	"github.com/cayleygraph/cayley"
 	"github.com/cayleygraph/cayley/graph"
-    "github.com/cayleygraph/cayley/graph/path"
+	"github.com/cayleygraph/cayley/graph/path"
 	"github.com/cayleygraph/quad"
-    "github.com/libp2p/go-libp2p-core/host"
-    pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p-core/host"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
+	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
 )
 
+// *Note: ChainID and MembershipID are synonymous*
 type Transaction struct {
     Hash         string `json:"hash" quad:"hash"`
     ParentHash   string `json:"parentHash" quad:"parentHash"`
@@ -36,12 +39,15 @@ type DAG struct {
     ctx                     context.Context
     log                     *logging.Logger
     reconcileBcastInterval  time.Duration
+    timeLock                []*Transaction
 }
 
 var (
     headTx string
     headTxLock = &sync.Mutex{}
     headTxMembershipID string
+    timeLockLen = 3
+    timeLockMtx = &sync.Mutex{}
 )
 
 func NewDAG(
@@ -77,6 +83,7 @@ func NewDAG(
         ctx: ctx,
         log: log,
         reconcileBcastInterval: reconcileBcastInterval,
+        timeLock: make([]*Transaction, timeLockLen),
     }
 
     genesis := Transaction{
@@ -91,12 +98,27 @@ func NewDAG(
 
     genesis.setHash()
     headTx = genesis.Hash
+    headTxMembershipID = "fc19db"
     d.InsertTx(&genesis)
-
-    LatestTransaction = (&genesis)
     genesis.Print()
-
     return d
+}
+
+func (d *DAG) QueueTx (tx *Transaction) {
+    timeLockMtx.Lock()
+    defer timeLockMtx.Unlock()
+    d.timeLock = append(d.timeLock, tx)
+    for len(d.timeLock) > timeLockLen {
+        var t *Transaction
+        t, d.timeLock = d.timeLock[0], d.timeLock[1:]
+        d.InsertTx(t)
+    }
+}
+
+func (d *DAG) TruncateTimeLock() {
+    timeLockMtx.Lock()
+    defer timeLockMtx.Unlock()
+    d.timeLock = d.timeLock[:0] // len = 0 but capacity preserved
 }
 
 func (d *DAG) InsertTx (tx *Transaction) bool {
@@ -149,6 +171,20 @@ func (t Transaction) Print() {
     fmt.Println(string(tx))
 }
 
+// SortbyDate sorts the array based on the date on the transactions (oldest first)
+func SortbyDate(txs []Transaction) {
+    sort.Slice(txs, func(i, j int) bool {
+        return txs[i].Timestamp < txs[j].Timestamp
+    })
+}
+
+// SortbyHash sorts the array based on the hash on the transactions
+func SortbyHash(txs []Transaction) {
+    sort.Slice(txs, func(i, j int) bool {
+        return txs[i].Hash < txs[j].Hash
+    })
+}
+
 func (d *DAG) recursiveSearch(membershipID string, direction int) string {
     // Grab a tx with this membershipID and start iterating from there
     p := cayley.StartPath(d.DB, quad.String(membershipID)).
@@ -182,7 +218,7 @@ func (d *DAG) getAlpha(membershipID string) string {
     return d.recursiveSearch(membershipID, 1)
 }
 
-// Get hash of tip of membership chain
+// Get hash of tip of membership's chain
 func (d *DAG) GetTip(membershipID string) string {
     return d.recursiveSearch(membershipID, -1)
 }
@@ -198,7 +234,7 @@ func (d *DAG) TxExists(hash string) bool {
 
 // Search returns nil if not found
 func (d *DAG) Search(hash string) *Transaction {
-    var tx *Transaction = nil
+    var tx *Transaction
     p := cayley.StartPath(d.DB).Tag("hash").
         Has(quad.String("timestamp")).
         Save("parentHash", "parentHash").
@@ -251,15 +287,16 @@ func (d *DAG) ReturnAll() []Transaction {
     return txs
 }
 
-func (d *DAG) CreateAlphaTx(membershipID string) {
+func (d *DAG) CreateAlphaTx(chainID string) {
     alpha := Transaction{
         Hash:           "",
         ParentHash:     "",
-        MembershipID:   membershipID,
+        MembershipID:   chainID,
         Timestamp:      time.Now().Unix(),
         Key:            "alphatx",
         Value:          "alphatx",
     }
+    headTxMembershipID = chainID
     d.InsertTx(&alpha)
 }
 
