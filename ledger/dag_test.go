@@ -21,12 +21,12 @@ func TestDAGLedger(t *testing.T) {
     psub, _ := pubsub.NewGossipSub(ctx, host)
 	dag := NewDAG(log, 100 * time.Millisecond, psub, host, ctx)
 
-	// Start new membership with ID "chain0"
-	dag.CreateAlphaTx("chain0")
+	dag.createAlphaTx("", "", "chain0", 0)
 
 	tx := &Transaction{
 		Hash: "",
-		ParentHash: "",
+		ParentHash0: "",
+		ParentHash1: "",
 		MembershipID: "chain0",
 		Timestamp: time.Now().Unix(),
 		Key: "count",
@@ -37,7 +37,8 @@ func TestDAGLedger(t *testing.T) {
 
 	tx = &Transaction{
 		Hash: "",
-		ParentHash: "",
+		ParentHash0: "",
+		ParentHash1: "",
 		MembershipID: "chain0",
 		Timestamp: time.Now().Unix() + 10, // force higher timestamp
 		Key: "count",
@@ -45,6 +46,8 @@ func TestDAGLedger(t *testing.T) {
 	}
 	dag.InsertTx(tx)
 	dag.InsertTx(tx) // generates print stating Tx already exists
+
+	dag.createAlphaTx("chain0", "", "chain1", time.Now().Unix())
 
 	txs, _ := json.MarshalIndent(dag.ReturnAll(), "", "    ")
 	t.Logf("All Transactions: %s\n", txs)
@@ -54,10 +57,18 @@ func TestDAGLedger(t *testing.T) {
 	t.Log("Transactions of membershipID chain0")
 	t.Logf("%s\n", cStr)
 
-	if !dag.TxExists(h) {
+	if dag.Search(h) == nil {
 		t.Errorf("Tx %s should exist", h)
 	}
-	if dag.TxExists("not_a_tx") {
+	if dag.Search("not_a_tx") != nil {
 		t.Error("hash 'not_a_tx' should not exist")
 	}
+
+	t.Logf("chain0 tip: %s\n", dag.GetTip("chain0"))
+	t.Logf("chain0 alpha: %s\n", dag.getAlpha("chain0"))
+	t.Logf(
+		"chain1 tip and alpha (should be the same): %s %s\n",
+		dag.GetTip("chain1"),
+		dag.getAlpha("chain1"),
+	)
 }

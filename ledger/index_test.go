@@ -20,23 +20,23 @@ func TestInsertChainID(t *testing.T) {
 	}
 
 	idx :=  index{
-		ledgerMap: ledgerMap,
-		sortedChainIDs: []string{"a", "ab", "abc", "d", "def", "m", "z"},
+		LedgerMap: ledgerMap,
+		SortedChainIDs: []string{"a", "ab", "abc", "d", "def", "m", "z"},
 		txCount: 1,
 	}
 
-	idx.InsertChainID("1")
-	idx.InsertChainID("l")
-	idx.InsertChainID("n")
+	idx.insertChainID("1")
+	idx.insertChainID("l")
+	idx.insertChainID("n")
 
 	idx.InsertTxHash("a", "aa")
 	idx.InsertTxHash("a", "de")
 
-	if !reflect.DeepEqual(idx.ledgerMap["a"], targetTxHashes) {
+	if !reflect.DeepEqual(idx.LedgerMap["a"], targetTxHashes) {
 		t.Error("tx hash insertions failed")
 	}
 
-	if !reflect.DeepEqual(idx.sortedChainIDs, targetChainIDs) {
+	if !reflect.DeepEqual(idx.SortedChainIDs, targetChainIDs) {
 		t.Error("chain ID insertions failed")
 	}
 }

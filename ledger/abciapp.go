@@ -19,8 +19,15 @@ type ABCIApp struct {
 var _ abcitypes.Application = (*ABCIApp)(nil)
 
 // NewABCIApp creates new Instance
-func NewABCIApp(dag *DAG, log *logging.Logger, chainID string) *ABCIApp {
-	dag.CreateAlphaTx(chainID)
+func NewABCIApp(
+	dag *DAG,
+	log *logging.Logger,
+	chainID string,
+	prevChain0 string,
+	prevChain1 string,
+	alphaTxTime int64,
+) *ABCIApp {
+	dag.createAlphaTx(prevChain0, prevChain1, chainID, alphaTxTime)
     return &ABCIApp{
     	dag: dag,
     	log: log,
@@ -47,7 +54,7 @@ func (app *ABCIApp) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Response
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 	if app.txEnabled == false {
-		app.log.Info("Incoming transactions are currently disabled")
+		app.log.Debug("DeliverTx: Incoming transactions are currently disabled")
 		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 
@@ -76,7 +83,7 @@ func (app *ABCIApp) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseChec
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 	if app.txEnabled == false {
-		app.log.Info("Incoming transactions are currently disabled")
+		app.log.Debug("CheckTx: Incoming transactions are currently disabled")
 		return abcitypes.ResponseCheckTx{Code: 23, GasWanted: 1}
 	}
 	if strings.HasPrefix(string(req.Tx), "{") {

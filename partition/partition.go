@@ -10,7 +10,6 @@ import (
 
 	cfg "github.com/tendermint/tendermint/config"
 	tmflags "github.com/tendermint/tendermint/libs/cli/flags"
-	"github.com/tendermint/tendermint/libs/log"
 	tmn "github.com/tendermint/tendermint/node"
 	"github.com/tendermint/tendermint/p2p"
 	"github.com/tendermint/tendermint/privval"
@@ -30,11 +29,16 @@ import (
 const (
     // ipPrefix = "0.0.0"
     ipPrefix = "192.168.10" // prefix for all containers
-    idToIPOffset = 2    // determines IP addr: e.g. node2 has IP  x.x.x.4 , 2 works for docker, core not yet finished
+    idToIPOffset = 1    // determines IP addr: e.g. node2 has IP  x.x.x.4 , 2 works for docker, core not yet finished
     tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
     abciAppAddr = "0.0.0.0:20000"
 )
- var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
+
+// CORE Emulator
+var rootDirStart = "/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build"
+
+// Docker
+// var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 
 type NetworkInfo struct {
     ViewID          int
@@ -54,20 +58,30 @@ type manager struct {
     log         *logging.Logger
     instances   map[*tmn.Node]service.Service
     dag         *ledger.DAG
+    tmlogger    tmlog.Logger
 }
 
 func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
+    logfile := fmt.Sprintf("tmlog%d.log", nodeID)
+    f, _ := os.OpenFile(logfile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0766)
+    l := tmlog.NewTMLogger(tmlog.NewSyncWriter(f))
+    tmlogger, _ := tmflags.ParseLogLevel(tmLogLevel, l, cfg.DefaultLogLevel())
+
     m := &manager {
         nodeID: nodeID,
         log: log,
         instances: make(map[*tmn.Node]service.Service, 1),
         dag: dag,
+        tmlogger: tmlogger,
     }
     return m
 }
 
 // To be called by Membership Manager upon view installation
 func (m *manager) NewNetwork(info NetworkInfo) {
+    var c0, c1 string
+    var ts int64
+
     // stop all Txs to allow reconciliation process
     if len(m.instances) > 0 {
         c, _ := rpchttp.New("tcp://0.0.0.0:30000", "")
@@ -78,20 +92,23 @@ func (m *manager) NewNetwork(info NetworkInfo) {
         }
     }
 
+    if len(info.Libp2pIDs) == 1 {
+        m.stopOldNetworks()
+        m.log.Info("partition: lone node, not creating new network")
+        return
+    }
 
     if info.ReconcileNeeded {
-        // barrier point: requires 100% partition agreement before returning
-        ledger.Reconcile(info.Libp2pIDs, info.AmLeader, m.dag, m.log)
+        // Barrier-providing function: requires 100% partition agreement before
+        // returning
+        c0, c1, ts = ledger.Reconcile(info.Libp2pIDs, info.AmLeader, m.dag, m.log)
     }
-    m.dag.Idx.InsertChainID(info.ChainID)
     m.stopOldNetworks()
 
     // start ABCI app
-    app := ledger.NewABCIApp(m.dag, m.log, info.ChainID)
+    app := ledger.NewABCIApp(m.dag, m.log, info.ChainID, c0, c1, ts)
     server := abciserver.NewSocketServer(abciAppAddr, app)
-    logger := tmlog.NewTMLogger(tmlog.NewSyncWriter(os.Stdout))
-    logger, _ = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
-    server.SetLogger(logger)
+    server.SetLogger(m.tmlogger)
     if err := server.Start(); err != nil {
         m.log.Fatalf("error starting socket server: %v\n", err)
     }
@@ -112,6 +129,7 @@ func (m *manager) stopOldNetworks() {
         node.Stop()
         node.Wait() // does this wait for a block in a round to finish?
         delete(m.instances, node)
+        m.tmlogger.Info("SwarmDAG: Tendermint node shutdown", "msg", "nil")
         if err := server.Stop(); err != nil {
             m.log.Fatalf("error starting socket server: %v\n", err)
         }
@@ -227,12 +245,7 @@ func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, er
     copyFile(filepath.Join(templateDir, "data/priv_validator_state.json"),
         filepath.Join(config.RootDir, "data/priv_validator_state.json"))
 
-    // create logger
-    logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-    logger, err = tmflags.ParseLogLevel(tmLogLevel, logger, cfg.DefaultLogLevel())
-    if err != nil {
-        return nil, fmt.Errorf("failed to parse log level: %w", err)
-    }
+
 
     // read private validator
     pv := privval.LoadFilePV(
@@ -247,6 +260,8 @@ func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, er
     }
 
     // create node
+
+    m.tmlogger.Info("SwarmDAG: Starting new Tendermint node", "msg", "nil")
     node, err := tmn.NewNode(
         config,
         pv,
@@ -255,7 +270,8 @@ func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, er
         tmn.DefaultGenesisDocProviderFunc(config),
         tmn.DefaultDBProvider,
         tmn.DefaultMetricsProvider(config.Instrumentation),
-        logger)
+        m.tmlogger,
+    )
     if err != nil {
         return nil, fmt.Errorf("failed to create new Tendermint node: %w", err)
     }

@@ -1,31 +1,35 @@
 ## Scripts for setting up core emulator and controlling the nodes.
 
- ## Instructions
+## Instructions
 
- ### Install requirements from requirements.txt in this directory:
+### CORE
+Version 7.3.0
 
-    pip3.6 install -r requirements.txt
- 
- ### Installing: 
- Core requires python3.6+ and Linux distributions may vary the default version 
- of python when simply using `python3`. To avoid any issues, follow the 
- instructions to build and install core from source. During the `.configure`
- stage, run
+Follow "Automated Install" directions to install into a virtual env. Use `inv`
+to install EMANE to the virtual environment.
 
-    PYTHON=python3.6 ./configure
- 
+    core-python -m pip install requirements.txt
+
+### Poetry (TODO)
+
 ### Launching:
- Run core daemon first by running `/etc/init.d/core-daemon start`
- Start core-gui by running `core-gui`
- 
+ Run python script by using
+
+    sudo core-python partition.py
+
+Ctrl+c to stop, and then cleanup:
+
+    sudo core-cleanup
+
+
 ### Creating an instance:
 Two options: Create a grid or create a line of nodes.
 createNodeGrid.py creates a grid of 8 nodes, but can be changed by running `python3.6 createNodeGrid.py -n 4` for 4 nodes.
 createNodeLine.py creates a line of 8 nodes, but can be changed by running `python3.6 createNodeLine.py -n 4` for 4 nodes.
 
  ### Running Scripts on nodes:
- Double click on a node on the gui. This will open up a terminal. Go to your root directory by typing in `cd /`. Locate your executable and run it. 
- 
+ Double click on a node on the gui. This will open up a terminal. Go to your root directory by typing in `cd /`. Locate your executable and run it.
+
  ### Automatically moving nodes in the grid formation:
  To automatically move the nodes in the grid formation, run `python3 ModeNodes.py args`.
  its arguments when running are as follows.

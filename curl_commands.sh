@@ -1,6 +1,7 @@
 MYTEST=`echo '{
             "hash": "thisishash",
-            "parentHash": "8553d1e0dbb4bcc987b3f31cbec734f6e85c8ba9",
+            "parentHash0": "8553d1e0dbb4bcc987b3f31cbec734f6e85c8ba9",
+            "parentHash1": "8553d1e0dbb4bcc987b3f31cbec734f6e85c8ba9",
             "timestamp": '$(date +%s)',
             "membershipID": "myMID",
             "key": "k7",

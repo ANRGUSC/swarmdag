@@ -1,14 +1,15 @@
 package main
 
 import (
-	"syscall"
+	"os"
+	// "syscall"
 	"time"
-    "fmt"
-    "encoding/json"
+	"fmt"
+	"encoding/json"
 	"github.com/ANRGUSC/swarmdag/node"
-    "github.com/ANRGUSC/swarmdag/membership"
-    rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-    "github.com/ANRGUSC/swarmdag/ledger"
+	"github.com/ANRGUSC/swarmdag/membership"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	"github.com/ANRGUSC/swarmdag/ledger"
 )
 
 const (
@@ -17,18 +18,20 @@ const (
 
 func main() {
     // Undo Alpine default umask 0022
-    syscall.Umask(0000)
+    // syscall.Umask(0000)
+
+    os.Chdir("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build")
 
     cfg := &node.Config{
         Membership: membership.Config{
-            NodeID: -1, // will be automatically filled
+            NodeID: -1, // TODO: wht to do with this?
             BroadcastPeriod: 200 * time.Millisecond,
             ProposeHeartbeatInterval: 1,
             ProposeTimerMin: 3, //todo
             ProposeTimerMax: 5,
-            PeerTimeout: 5, // seconds
-            LeaderTimeout: 10, // seconds
-            FollowerTimeout: 10, // sec
+            PeerTimeout: 2, // seconds
+            LeaderTimeout: 8, // seconds
+            FollowerTimeout: 8, // sec
             MajorityRatio: 0.51,
         },
         ReconcileBcastInterval: 500 * time.Millisecond,
@@ -41,7 +44,8 @@ func main() {
     for {
         tx := ledger.Transaction {
                 Hash: "",
-                ParentHash: "",
+                ParentHash0: "",
+                ParentHash1: "",
                 Timestamp: time.Now().Unix(),
                 MembershipID: "",
                 Key: fmt.Sprintf("k%d", i),

@@ -42,6 +42,13 @@ stop:
 rm_tmp:
 	sudo rm -rf build/tmp/
 
+run: stop build rm_tmp local
+	echo "did ALL the things"
+
+full: build rm_tmp
+	sudo core-cleanup
+	cd coreemulator; sudo core-python partition_net.py
+
 clean:
 	# need sudo becuase Docker containers run as root
 	docker-compose down

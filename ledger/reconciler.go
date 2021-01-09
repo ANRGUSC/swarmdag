@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 	"context"
+	"sort"
 	"encoding/json"
 	logging "github.com/op/go-logging"
 	"github.com/libp2p/go-libp2p-pubsub"
@@ -22,13 +23,15 @@ type txInfo struct {
 }
 
 type reconcileMsg struct {
-	MsgType string					`json:"MsgType"`
-	LedgerHash uint64				`json:"LedgerHash,omitempty"`
-	ChainsHash uint64				`json:"ChainsHash,omitempty"`
-	ChainCount int					`json:"ChainCount,omitempty"`
-	ChainInfo  map[string]txInfo	`json:"ChainInfo,omitempty"`
-	Transactions []Transaction		`json:"Transactions,omitempty"`
-	NeededChains []string			`json:"NeededChains,omitempty"`
+	MsgType string						`json:"MsgType"`
+	PrevChainID	string			  		`json:"PrevChainID,omitempty"`
+	LedgerHash uint64					`json:"LedgerHash,omitempty"`
+	ChainsHash uint64					`json:"ChainsHash,omitempty"`
+	ChainCount int						`json:"ChainCount,omitempty"`
+	ChainInfo  map[string]txInfo		`json:"ChainInfo,omitempty"`
+	Transactions []Transaction			`json:"Transactions,omitempty"`
+	NeededChains []string				`json:"NeededChains,omitempty"`
+	AlphaTxTime int64				`json:"AlphaTxTime,omitempty"`
 }
 
 type pendingPull struct {
@@ -42,12 +45,15 @@ type reconciler struct {
 	peerRepeats	map[peer.ID]int
 	log *logging.Logger
 	newPullCh chan pendingPull
+	prevChainIDs map[string]struct{}
+	alphaTxTime int64
 }
 
-func createMsg(index Index) reconcileMsg {
+func createMsg(prevChainID string, index Index) reconcileMsg {
 	chainInfo := index.CompileChainInfo()
 	rMsg := reconcileMsg{
 		MsgType: "bcast",
+		PrevChainID: prevChainID,
 		LedgerHash: index.HashLedger(),
 		ChainsHash: index.HashSortedChainIDs(),
 		ChainCount: len(chainInfo),
@@ -62,7 +68,7 @@ func (r *reconciler) ledgerBroadcast(ctx context.Context) {
 	for {
 		select {
 		case <-bcastTicker.C:
-			rMsg, _ := json.Marshal(createMsg(r.dag.Idx))
+			rMsg, _ := json.Marshal(createMsg(r.dag.ChainID(), r.dag.Idx))
 			r.dag.psub.Publish(topic, rMsg)
 		case <-ctx.Done():
 			return
@@ -101,6 +107,7 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 					delete(pending, m.GetFrom())
 				}
 			case "pullReq":
+				r.log.Warning("rcvd pull request")
 				txs := r.dag.CompileTransactions(rMsg.NeededChains)
 				pullResp, _ := json.Marshal(reconcileMsg {
 					MsgType: "pullResp",
@@ -136,6 +143,9 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 		return // src should pull ledger from me
 	}
 
+	r.log.Infof("sending pull req to %s\n", srcID.String())
+	r.log.Infof("my hash: %d, their hash: %d\n", r.dag.Idx.HashLedger(), rMsg.LedgerHash)
+
 	p := pendingPull{srcID, make(chan bool)}
 	r.newPullCh <- p
 	pullReq, _ := json.Marshal(
@@ -149,6 +159,7 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 		case <-pullReqTicker.C:
 			r.dag.psub.Publish("pull-" + srcID.String(), pullReq)
 		case <-p.doneCh:
+			r.log.Info("done with pull req")
 			return
 		}
 	}
@@ -164,14 +175,17 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 		json.Unmarshal(m.Data, &rMsg)
 		if rMsg.MsgType == "finished" {
 			// received finished from leader
+			r.alphaTxTime = rMsg.AlphaTxTime
 			return
 		} else if rMsg.MsgType != "bcast" {
 			continue
 		}
+
+		r.prevChainIDs[rMsg.PrevChainID] = struct{}{}
+
 		if (rMsg.LedgerHash == r.dag.Idx.HashLedger()) {
 			r.peerRepeats[srcID]++
 		} else {
-			fmt.Println("send pull req")
 			r.sendPullReq(srcID, rMsg)
 			r.peerRepeats[srcID] = 0
 		}
@@ -179,16 +193,19 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 		// stop reconciliation if same msg rcvd received enough times
 		if r.amLeader {
 			var notFinished bool
-			for s, repeats := range r.peerRepeats {
+			for _, repeats := range r.peerRepeats {
 				if repeats < repeatsRequired {
 					notFinished = true
 				}
 			}
 			if notFinished {
+				fmt.Println("leader not finished")
 				continue
 			}
-			fin := createMsg(r.dag.Idx)
+			fin := createMsg(r.dag.ChainID(), r.dag.Idx)
 			fin.MsgType = "finished"
+			r.alphaTxTime = time.Now().Unix()
+			fin.AlphaTxTime = r.alphaTxTime
 			f, _ := json.Marshal(fin)
 			r.dag.psub.Publish(topic, f)
 			return
@@ -196,20 +213,20 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 	}
 }
 
+// Reconciler assumes network events only include a simple split or a merger of
+// only two partitions.
 func Reconcile(
 	libp2pIDs []peer.ID,
 	amLeader bool,
 	dag *DAG,
 	log *logging.Logger,
-) error {
-	// TODO: need to take care of case of singular membership
+) (string, string, int64) {
+	// TODO: need to take care of case of singular membership. is this already done?
 	log.Info("Begin reconciler process")
 	peerRepeats := make(map[peer.ID]int, len(libp2pIDs))
 	for _, id := range libp2pIDs {
 		peerRepeats[id] = 0
 	}
-
-	fmt.Printf("%+v\n", peerRepeats)
 
 	r := reconciler {
 		amLeader: amLeader,
@@ -217,7 +234,9 @@ func Reconcile(
 		dag: dag,
 		log: log,
 		newPullCh: make(chan pendingPull),
+		prevChainIDs: make(map[string]struct{}, 2),
 	}
+	r.prevChainIDs[r.dag.ChainID()] = struct{}{}
 
 	ctx, cancel := context.WithCancel(dag.ctx)
 	defer cancel()
@@ -226,5 +245,16 @@ func Reconcile(
 	go r.pullMsgHandler(ctx)
 	r.broadcastMsgHandler(ctx)
 
-	return nil
+	log.Infof("Sanity check -- my hash: %d\n", dag.Idx.HashLedger())
+
+	prevChainIDs := []string{"", ""}
+	i := 0
+	for chainID := range r.prevChainIDs {
+		prevChainIDs[i] = chainID
+		i++
+	}
+	sort.Strings(prevChainIDs)
+
+	// prevChainIDs[1] is empty during clean network split
+	return prevChainIDs[0], prevChainIDs[1], r.alphaTxTime
 }

@@ -66,18 +66,20 @@ type Node struct {
 func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     var gossipPrivKey crypto.PrivKey
 
-    f, err := os.OpenFile("swarmdag.log", os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-    backend1 := logging.NewLogBackend(f, "", 0)
+    gossipHost, addrEnd := getIPAddr()
+    nodeID := addrEnd - 1  // TODO: -1 for lxc, -2 for docker
+
+    // logfile := fmt.Sprintf("file-swarmdag%d.log", nodeID)
+    // f, err := os.OpenFile(logfile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+    // backend1 := logging.NewLogBackend(f, "", 0)
     backend2 := logging.NewLogBackend(os.Stdout, "", 0)
-    b1 := logging.AddModuleLevel(backend1)
+    // b1 := logging.AddModuleLevel(backend1)
     b2 := logging.AddModuleLevel(backend2)
 
-    b1.SetLevel(logging.DEBUG, "")
+    // b1.SetLevel(logging.DEBUG, "")
     b2.SetLevel(logging.DEBUG, "")
-    logging.SetBackend(b1, b2)
-
-    gossipHost, addrEnd := getIPAddr()
-    nodeID := addrEnd - 2
+    // logging.SetBackend(b1, b2)
+    logging.SetBackend(b2)
 
     k, err := getPrivKey(keyfile, nodeID)
     if err != nil {

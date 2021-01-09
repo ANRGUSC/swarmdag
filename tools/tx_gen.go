@@ -15,7 +15,8 @@ func main() {
 	for i := 0; i < 20; i++ {
 		tx := ledger.Transaction {
 				Hash: "",
-	            ParentHash: "",
+	            ParentHash0: "",
+	            ParentHash1: "",
 	            Timestamp: time.Now().Unix(),
 	            MembershipID: "mock_abci",
 	            Key: fmt.Sprintf("k%d", i),
