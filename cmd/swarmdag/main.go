@@ -13,7 +13,7 @@ import (
 )
 
 const (
-    txInterval = 5 * time.Second
+    txInterval = 200 * time.Millisecond
 )
 
 func main() {
@@ -25,16 +25,16 @@ func main() {
     cfg := &node.Config{
         Membership: membership.Config{
             NodeID: -1, // TODO: wht to do with this?
-            BroadcastPeriod: 200 * time.Millisecond,
-            ProposeHeartbeatInterval: 1,
-            ProposeTimerMin: 3, //todo
-            ProposeTimerMax: 5,
-            PeerTimeout: 2, // seconds
-            LeaderTimeout: 8, // seconds
-            FollowerTimeout: 8, // sec
+            BroadcastPeriod: 250 * time.Millisecond,
+            ProposeHeartbeatInterval: 200 * time.Millisecond,
+            ProposeTimerMin: 2, //todo
+            ProposeTimerMax: 4,
+            PeerTimeout: 1500 * time.Millisecond,
+            LeaderTimeout: 5 * time.Second,
+            FollowerTimeout: 2 * time.Second, // needs to be greater than ProposeHeartbeatInterval
             MajorityRatio: 0.51,
         },
-        ReconcileBcastInterval: 500 * time.Millisecond,
+        ReconcileBcastInterval: 250 * time.Millisecond,
     }
 
 	node.NewNode(cfg, 8001, "./templates/keys.json")
@@ -54,7 +54,7 @@ func main() {
         txBytes, _ := json.Marshal(tx)
         _, err := c.BroadcastTxCommit(txBytes)
         if err != nil {
-            fmt.Println(err)
+            // fmt.Println(err)
         }
         time.Sleep(txInterval)
         i++

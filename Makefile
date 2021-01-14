@@ -31,7 +31,8 @@ push:
 	docker push "anrg/swarmdag"
 
 build:
-	CGO_ENABLED=0 go build -o ./build/swarmdag ./cmd/swarmdag/main.go
+	@if [ -f ./build/swarmdag ]; then rm ./build/swarmdag; fi
+	go build -o ./build/swarmdag ./cmd/swarmdag/main.go
 
 local:
 	docker-compose up

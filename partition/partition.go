@@ -102,6 +102,11 @@ func (m *manager) NewNetwork(info NetworkInfo) {
         // Barrier-providing function: requires 100% partition agreement before
         // returning
         c0, c1, ts = ledger.Reconcile(info.Libp2pIDs, info.AmLeader, m.dag, m.log)
+        if c0 == "" && c1 == "" && ts == 0 {
+            m.log.Info("reconciler timed out (at least 1 node failed)")
+            m.stopOldNetworks()
+            return
+        }
     }
     m.stopOldNetworks()
 
@@ -121,6 +126,7 @@ func (m *manager) NewNetwork(info NetworkInfo) {
 
     node.Start()
     m.instances[node] = server
+    m.log.Info("partition: started new tendermint instance")
 }
 
 func (m *manager) stopOldNetworks() {

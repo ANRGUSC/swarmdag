@@ -14,7 +14,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
-    "github.com/ANRGUSC/swarmdag/partition"
+	"github.com/ANRGUSC/swarmdag/partition"
 )
 
 var isLeader bool = false
@@ -38,14 +38,14 @@ type Config struct {
     NodeID                      int
     MaxConnections              int
     BroadcastPeriod             time.Duration
-    ProposeHeartbeatInterval    int
+    ProposeHeartbeatInterval    time.Duration
 
     ProposeTimerMin             int
     ProposeTimerMax             int
 
-    PeerTimeout                 int
-    LeaderTimeout               int
-    FollowerTimeout             int
+    PeerTimeout                 time.Duration
+    LeaderTimeout               time.Duration
+    FollowerTimeout             time.Duration
     MajorityRatio               float32
 }
 
@@ -73,12 +73,27 @@ type manager struct {
     state                   nodeState
     log                     *logging.Logger
 
-    dmLeadCh                chan *pubsub.Message
-    leadingProposalCh       chan bool
+    leadingProposalCh       chan chan *pubsub.Message
 }
 
 type directMsg struct {
-    MsgType string      `json:"MsgType"`
+    MsgType string          `json:"MsgType"`
+    InstallView int64       `json:"INSTALL_VIEW"`
+    ConfirmedLeader int64   `json:"CONFIRMED_LEADER"`
+    Propose int64           `json:"PROPOSE"`
+    ViewID  int64           `json:"VIEW_ID"`
+    List map[string]int64
+}
+
+func parseDirectMsg(in []byte) directMsg {
+    var dm directMsg
+    json.Unmarshal(in, &dm)
+    json.Unmarshal(in, &dm.List)
+    delete(dm.List, "INSTALL_VIEW")
+    delete(dm.List, "CONFIRMED_LEADER")
+    delete(dm.List, "PROPOSE")
+    delete(dm.List, "VIEW_ID")
+    return dm
 }
 
 func NewManager(
@@ -100,27 +115,23 @@ func NewManager(
     }
 
     if conf.ProposeHeartbeatInterval == 0 {
-        conf.ProposeHeartbeatInterval = 1
-    }
-
-    if conf.ProposeTimerMin == 0 {
-       conf.ProposeTimerMin = 3
+        conf.ProposeHeartbeatInterval = 300 * time.Millisecond
     }
 
     if conf.ProposeTimerMax == 0 {
-       conf.ProposeTimerMax = 5
+       conf.ProposeTimerMax = 4
     }
 
     if conf.PeerTimeout == 0 {
-        conf.PeerTimeout = 1 //seconds
+        conf.PeerTimeout = 1000 * time.Millisecond
     }
 
     if conf.LeaderTimeout == 0 {
-        conf.LeaderTimeout = 5
+        conf.LeaderTimeout = 5 * time.Second
     }
 
     if conf.FollowerTimeout == 0 {
-        conf.FollowerTimeout = 1
+        conf.FollowerTimeout = 2 * time.Millisecond
     }
 
     if conf.MajorityRatio == 0 {
@@ -150,9 +161,10 @@ func NewManager(
         state:                      FOLLOW_ANY,
         log: log,
 
-        dmLeadCh:                   make(chan *pubsub.Message),
-        leadingProposalCh:          make(chan bool),
+        leadingProposalCh:          make(chan chan *pubsub.Message),
     }
+
+    m.log.Debugf("sanity check %+v\n", conf)
 
     return m
 }
@@ -172,12 +184,12 @@ func (m *manager) ConnectHandler(c network.Conn) {
 
 func (m *manager) Start() {
     m.host.Network().SetConnHandler(m.ConnectHandler)
-    peerChan := initMDNS(m.ctx, m.host, "rendezvousStr", 5 * time.Second)
-    m.membershipList[m.host.ID().String()] = time.Now().Unix()
+    peerChan := initMDNS(m.ctx, m.host, "rendezvousStr", 200 * time.Millisecond)
+    m.membershipList[m.host.ID().String()] = time.Now().UnixNano()
     m.membershipList["VIEW_ID"] = int64(m.viewID)
     m.nextMembershipList["VIEW_ID"] = int64(m.viewID + 1)
     m.notif.ConnectedF = func(n network.Network, c network.Conn) {
-            // m.log.Debug("NOTIFIEE CONNECTED")
+            m.log.Debug("NOTIFIEE CONNECTED", c.RemoteMultiaddr().String())
     }
     m.notif.DisconnectedF = func(n network.Network, c network.Conn) {
         m.log.Debug("disconnected from node", m.libp2pIDs[c.RemotePeer()])
@@ -192,35 +204,47 @@ func (m *manager) Start() {
 }
 
 func isAddr(addr string) bool {
-    return (addr != "INSTALL_VIEW" && addr != "CONFIRMED_LEADER" &&
-            addr != "PROPOSE" && addr != "VIEW_ID" && addr != "VOTE_TABLE")
+    switch addr {
+    case "INSTALL_VIEW":
+        break
+    case "CONFIRMED_LEADER":
+        break
+    case "PROPOSE":
+        break
+    case "VIEW_ID":
+        break
+    case "VOTE_TABLE":
+        break
+    default:
+        return true
+    }
+    return false
+}
+
+func memberCount(mlist map[string]int64) int {
+    cnt := 0
+    for addr, _ := range mlist {
+        if isAddr(addr) {
+            cnt++
+        }
+    }
+    return cnt
 }
 
 func (m *manager) mdnsQueryHandler(peerChan chan peer.AddrInfo) {
     for {
         p := <-peerChan // block until a mdns query is received
-
         _, neighbor := m.neighborList[p.ID.String()]
         nextMembershipListLock.Lock()
-        _, member := m.membershipList[p.ID.String()]
-
-        if member {
-            m.membershipList[p.ID.String()] = time.Now().Unix()
-        }
-
-        m.nextMembershipList[p.ID.String()] = time.Now().Unix()
-
+        m.nextMembershipList[p.ID.String()] = time.Now().UnixNano()
         nextMembershipListLock.Unlock()
 
-        //TODO use peer store to determine num connections
-        if m.numConnections < m.conf.MaxConnections {
-            //connect will only actually dial if a connection does not exist
+        //connect will only actually dial if a connection does not exist
+        if m.host.Network().Connectedness(p.ID) == network.NotConnected {
             if err := m.host.Connect(m.ctx, p); err != nil {
                 m.log.Warning("Connection failed:", err)
             }
-            // m.numConnections++ //TODO: implement counter
         }
-
         if !neighbor {
             m.neighborList[p.ID.String()] = p.ID
         }
@@ -228,21 +252,18 @@ func (m *manager) mdnsQueryHandler(peerChan chan peer.AddrInfo) {
 }
 
 func (m *manager) checkPeerTimeouts() bool {
-    changed := false
-
     nextMembershipListLock.Lock()
     defer nextMembershipListLock.Unlock()
-
-    m.nextMembershipList[m.host.ID().String()] = time.Now().Unix()
+    m.nextMembershipList[m.host.ID().String()] = time.Now().UnixNano()
+    changed := false
     for addr, timestamp := range m.nextMembershipList {
         if isAddr(addr) {
-            if time.Now().Unix() - timestamp > int64(m.conf.PeerTimeout) {
+            if time.Now().UnixNano() - timestamp > m.conf.PeerTimeout.Nanoseconds() {
                 delete(m.nextMembershipList, addr)
                 changed = true
             }
         }
     }
-
     return changed
 }
 
@@ -252,21 +273,10 @@ func (m *manager) membershipBroadcast() {
         select {
         case <-broadcastTicker.C:
             m.checkPeerTimeouts()
-
             nextMembershipListLock.RLock()
             nmlist, _ := json.Marshal(m.nextMembershipList)
             nextMembershipListLock.RUnlock()
-
             m.psub.Publish("next_membership", nmlist)
-        case cmd := <-m.membershipBroadcastCh:
-            switch cmd {
-            case "START_BROADCAST":
-                m.log.Debug("start membership broadcast")
-                broadcastTicker = time.NewTicker(m.conf.BroadcastPeriod)
-            case "STOP_BROADCAST":
-                m.log.Debug("stop membership broadcast")
-                broadcastTicker.Stop()
-            }
         }
     }
 }
@@ -288,17 +298,17 @@ func (m *manager) voteTableBroadcast(
             m.psub.Publish("membership_propose", vt)
         case <-ctx.Done():
             m.log.Debug("stopping vote table broadcasts")
+            c := []byte("{\"PROPOSE\": -1}")
+            m.psub.Publish("membership_propoose", c) // FIXME: put me in a better place?
             return
         }
     }
 }
 
 func (m *manager) directMsgDispatcher() {
-    var leading bool
+    var leadCh chan *pubsub.Message
     msgCh := make(chan *pubsub.Message)
     sub, _ := m.psub.Subscribe(m.host.ID().String())
-
-    var dm directMsg
 
     go func() {
         for {
@@ -313,16 +323,15 @@ func (m *manager) directMsgDispatcher() {
     for {
         select {
         case msg := <-msgCh:
-            if leading {
-                json.Unmarshal(msg.Data, dm)
-                switch dm.MsgType {
-                case "voteAck":
-                    m.dmLeadCh <- msg
-                case "voteNack":
-                    m.dmLeadCh <- msg
+            var ack directMsg
+            json.Unmarshal(msg.Data, &ack)
+            if leadCh != nil {
+                select {
+                case leadCh <- msg:
+                default:
                 }
             }
-        case leading = <-m.leadingProposalCh:
+        case leadCh = <-m.leadingProposalCh:
         case <-m.ctx.Done():
             return
         }
@@ -331,15 +340,21 @@ func (m *manager) directMsgDispatcher() {
 }
 
 // In voteTable, "1" means yes, "0" means no response, and "-1" means a NACK
-func (m *manager) leadProposal() {
-    var src peer.ID
+func (m *manager) leadProposal(ctx context.Context) {
     var numNACKs int
     numVotes := 1
     voteTable := make(map[string]int, len(m.nextMembershipList))
+    dmCh := make(chan *pubsub.Message, 16)
     var vtLock sync.Mutex
-    voteCtx, cancelVote := context.WithCancel(context.Background())
-    leadProposalTimeout := time.NewTicker(time.Duration(m.conf.LeaderTimeout) *
-                                          time.Second)
+    voteCtx, cancelVote := context.WithCancel(ctx)
+    leadProposalTimeout := time.NewTicker(m.conf.LeaderTimeout)
+    m.log.Debug("leader timeout is ", m.conf.LeaderTimeout)
+    m.leadingProposalCh <- dmCh
+    defer func() {
+        cancelVote()
+        m.proposeRoutineCh <- "RESET"
+        m.leadingProposalCh <- nil
+    } ()
 
     //initiate empty table
     nextMembershipListLock.RLock()
@@ -349,145 +364,150 @@ func (m *manager) leadProposal() {
         }
     }
     voteTable["VOTE_TABLE"] = 1
+    voteTable["VIEW_ID"] = int(m.nextMembershipList["VIEW_ID"])
     nextMembershipListLock.RUnlock()
 
     voteTable[m.host.ID().String()] = 1
     go m.voteTableBroadcast(&voteTable, &vtLock, voteCtx)
 
     for {
-        // the -2 accounts for the "PROPOSE" and "VIEW_ID" keys
         nextMembershipListLock.RLock()
-        nextMembershipLen := len(m.nextMembershipList) - 2
+        vtLock.Lock()
+        memberCnt := memberCount(m.nextMembershipList)
+        for addr, _ := range m.nextMembershipList {
+            if isAddr(addr) {
+                if _, exist := voteTable[addr]; !exist {
+                    voteTable[addr] = 0
+                }
+            }
+        }
+        for addr, _ := range voteTable {
+            if isAddr(addr) {
+                if _, exist := m.nextMembershipList[addr]; !exist {
+                    delete(voteTable, addr)
+                }
+            }
+        }
+        vtLock.Unlock()
         nextMembershipListLock.RUnlock()
 
-        if (float32(numVotes) / float32(nextMembershipLen)) > m.conf.MajorityRatio {
+        if (float32(numVotes) / float32(memberCnt)) > m.conf.MajorityRatio {
             //let nodes know that votes confirm you are the leader
             // fix: this occurs for each vote message
             m.proposeRoutineCh<-"CONFIRMED_LEADER"
+            if numVotes == memberCnt {
+                installList := make(map[string]int64)
+                nextMembershipListLock.RLock()
+                for k, v := range m.nextMembershipList {
+                    installList[k] = v
+                }
+                nextMembershipListLock.RUnlock()
+                installList["INSTALL_VIEW"] = 1
+                installMsg, _ := json.Marshal(installList)
 
-            if numVotes == (nextMembershipLen) {
-                cancelVote()
-                nextMembershipListLock.Lock()
-                delete(m.nextMembershipList, "CONFIRMED_LEADER")
-                delete(m.nextMembershipList, "PROPOSE")
-                m.nextMembershipList["INSTALL_VIEW"] = 1
-                nextMembershipListLock.Unlock()
-
-                // Let two broadcasts with "INSTALL_VIEW" before starting TM
-                // libp2p gossipsub should ensure 100% reliability
-                time.Sleep(2 * m.conf.BroadcastPeriod)
-
-                m.installMembershipView(m.nextMembershipList, m.host.ID().String())
-                m.proposeRoutineCh<-"RESET"
-                m.leadingProposalCh<-false
+                // stop-gap for "membership_propose" topic to propagate
+                m.psub.Publish("membership_propose", installMsg)
+                m.log.Debug(string(installMsg))
+                // time.Sleep(200 * time.Millisecond)
+                // m.psub.Publish("membership_propose", installMsg)
+                // m.psub.Publish("membership_propose", installMsg)
+                // time.Sleep(200 * time.Millisecond)
+                // m.psub.Publish("membership_propose", installMsg)
+                // m.psub.Publish("membership_propose", installMsg)
+                m.installMembershipView(installList, m.host.ID().String())
                 return
             }
         }
 
         select {
+        case <-ctx.Done():
+            return
         case <-leadProposalTimeout.C:
             m.log.Debug("LEADER TIMEOUT")
-            m.proposeRoutineCh<-"RESET"
-            cancelVote()
-            m.leadingProposalCh<-false
             return
-        case dm := <-m.dmLeadCh:
-            proposeResp := make(map[string]int64)
-            json.Unmarshal(dm.Data, &proposeResp)
-            src, _ = peer.IDFromBytes(dm.From)
+        case dm := <-dmCh:
+            msg := parseDirectMsg(dm.Data)
+            src, _ := peer.IDFromBytes(dm.From)
 
-            //check if response indicates a leader already exists. must check
-            //before NACK
-            if proposeResp["LEADER_EXISTS"] == 1 {
-                m.proposeRoutineCh<-"RESET"
-                cancelVote()
-                m.leadingProposalCh<-false
-                return
-            }
-
-            //check if NACK message. if so, increment NACK count. Decrement ACK
-            //count if necessary
-            if proposeResp["NACK"] == 1 {
-                m.log.Debug("received NACK")
+            switch msg.MsgType {
+            case "nackResp":
                 vtLock.Lock()
-                if voteTable[src.String()] == 1 {
+                switch voteTable[src.String()] {
+                case -1:
+                    // already got NACK from this node
+                case 0:
+                    numNACKs += 1
+                    voteTable[src.String()] = -1
+                    m.log.Debug("received NACK")
+                case 1:
                     numVotes -= 1
+                    voteTable[src.String()] = -1
+                    numNACKs += 1
+                    m.log.Debug("received NACK")
                 }
-                voteTable[src.String()] = -1
                 vtLock.Unlock()
-                numNACKs += 1
 
                 nextMembershipListLock.RLock()
-                nextMembershipLen = len(m.nextMembershipList) - 2
+                // the -2 accounts for the "PROPOSE" and "VIEW_ID" keys
+                memberCnt := memberCount(m.nextMembershipList)
                 nextMembershipListLock.RUnlock()
-                // the -1 accounts for the "PROPOSE" key
-                if (float32(numNACKs) / float32(nextMembershipLen)) >
+                if (float32(numNACKs) / float32(memberCnt)) >
                         (1.0 - m.conf.MajorityRatio) {
-                    m.proposeRoutineCh<-"RESET"
-                    m.leadingProposalCh<-false
+                    m.log.Info("cancelling leadProposal()")
                     return
                 }
-
                 continue
-            }
-
-            //must be a propose membership ACK response
-            nextMembershipListLock.Lock()
-            for addr, timestamp := range proposeResp {
-                if isAddr(addr) {
-                    if m.nextMembershipList[addr] < proposeResp[addr] {
+            case "ackResp":
+                //must be a propose membership ACK response
+                nextMembershipListLock.Lock()
+                for addr, timestamp := range msg.List {
+                    if m.nextMembershipList[addr] < msg.List[addr] {
                         m.nextMembershipList[addr] = timestamp
                     }
                 }
-            }
-            nextMembershipListLock.Unlock()
+                nextMembershipListLock.Unlock()
 
-            vtLock.Lock()
-            if voteTable[src.String()] == -1 {
-                numNACKs -= 1
-                voteTable[src.String()] = 1
-            }
-            vtLock.Unlock()
-
-            numVotes += 1
-        }
-
-
+                vtLock.Lock()
+                switch voteTable[src.String()] {
+                case -1:
+                    numNACKs -= 1
+                    voteTable[src.String()] = 1
+                    m.log.Debugf("ACK from node %d \n", m.libp2pIDs[src])
+                    numVotes += 1
+                    m.log.Debugf("member count %d\n", memberCnt)
+                case 0:
+                    voteTable[src.String()] = 1
+                    m.log.Debugf("ACK from node %d\n", m.libp2pIDs[src])
+                    m.log.Debugf("member count %d\n", memberCnt)
+                    numVotes += 1
+                case 1:
+                    // do nothing
+                }
+                vtLock.Unlock()
+            } // switch msg.Type
+        } // select
     }
 
-    m.leadingProposalCh<-false
 }
 
-func (m *manager) checkMembershipChange() bool {
+func (m *manager) membershipChanged() bool {
     m.checkPeerTimeouts()
     nextMembershipListLock.Lock()
     defer nextMembershipListLock.Unlock()
-
-    nmlen := len(m.nextMembershipList)
-    mlen := len(m.membershipList)
-    invalid := []string{"INSTALL_VIEW", "CONFIRMED_LEADER", "PROPOSE", "VIEW_ID", "VOTE_TABLE"}
-
-    for k := range invalid {
-        if m.nextMembershipList[invalid[k]] != 0 {
-            nmlen = nmlen - 1
-        }
-        if m.membershipList[invalid[k]] != 0 {
-            mlen = mlen - 1
-        }
-    }
-
-    if len(m.nextMembershipList) == len(m.membershipList) {
-        for addr, _ := range m.nextMembershipList {
-            if isAddr(addr) {
-                if m.membershipList[addr] == 0 {
-                    return true
-                }
+    for addr, _ := range m.nextMembershipList {
+        if isAddr(addr) {
+            if _, exists := m.membershipList[addr]; !exists {
+                return true
             }
         }
-    } else {
-        return true
     }
-
+    for addr, _ := range m.membershipList {
+        if isAddr(addr) {
+            if _, exists := m.nextMembershipList[addr]; !exists {
+                return true
+            }
+        }
+    }
     return false
 }
 
@@ -500,21 +520,23 @@ func createAck(mlist map[string]int64) map[string]interface{} {
     return ack
 }
 
+// This routine runs indefinitely. It decides if and when to propose a
+// membership update or follow a leader that is proposing.
 func (m *manager) proposeRoutine() {
-    rand.Seed(time.Now().UnixNano())
     proposeSub, _ := m.psub.Subscribe("membership_propose")
+    rand.Seed(time.Now().UnixNano())
     rcvdMsg := make(chan bool)
     nextMsg := make(chan bool)
     var src peer.ID
     var leader string
     mlist := make(map[string]int64)
-    // TODO: make nack a simple struct msg
     nack := directMsg{MsgType: "nackResp"}
 
-    //sleep min time plus a random value up to the max at 10ms resolution
-    proposeTicker := time.NewTicker(time.Duration(m.conf.ProposeTimerMin * 1000 +
-        rand.Intn((m.conf.ProposeTimerMax - m.conf.ProposeTimerMin) * 100) * 10) *
-        time.Millisecond)
+    //sleep min time plus a random value up to the max at 100ms resolution
+    interval := (m.conf.ProposeTimerMax - m.conf.ProposeTimerMin) * 1000 / 100
+    tickerTime := time.Duration(rand.Intn(interval) * 100) * time.Millisecond +
+                  time.Duration(m.conf.ProposeTimerMin) * time.Second
+    proposeTicker := time.NewTicker(tickerTime)
 
     // init timers
     proposeHeartbeat := time.NewTicker(10 * time.Second)
@@ -530,34 +552,32 @@ func (m *manager) proposeRoutine() {
             json.Unmarshal(got.Data, &mlist)
             src, _ = peer.IDFromBytes(got.From)
 
-            if src.String() != m.host.ID().String() {
+            if src != m.host.ID() {
                 rcvdMsg <- true
                 <-nextMsg
             }
         }
     }()
 
+    var leadCtx context.Context
+    var leadCancel context.CancelFunc
+
     for {
         select {
         case <-proposeTicker.C:
-
-            if m.state == FOLLOW_ANY {
-                if m.checkMembershipChange() {
-                    m.log.Debugf("proposing membership update to view ID %d\n", m.viewID + 1)
-                    m.state = LEAD_PROPOSAL
-                    leader = m.host.ID().String() //for creating membership ID
-                    m.log.Debug("state LEAD_PROPOSAL")
-                    nextMembershipListLock.Lock()
-                    m.nextMembershipList["PROPOSE"] = 1
-                    nextMembershipListLock.Unlock()
-                    go m.leadProposal()
-                    proposeTicker.Stop()
-                    proposeHeartbeat = time.NewTicker(time.Duration(m.conf.ProposeHeartbeatInterval))
-                }
-            } else {
-                m.log.Debug("no changes detected, not proposing membership update")
+            if m.membershipChanged() {
+                proposeTicker.Stop()
+                m.log.Debugf("proposing membership update to view ID %d\n", m.viewID + 1)
+                m.state = LEAD_PROPOSAL
+                leader = m.host.ID().String() //for creating membership ID
+                m.log.Debug("state LEAD_PROPOSAL")
+                nextMembershipListLock.Lock()
+                m.nextMembershipList["PROPOSE"] = 1
+                nextMembershipListLock.Unlock()
+                leadCtx, leadCancel = context.WithCancel(m.ctx)
+                go m.leadProposal(leadCtx)
+                proposeHeartbeat = time.NewTicker(m.conf.ProposeHeartbeatInterval)
             }
-
         case <-proposeHeartbeat.C:
             m.checkPeerTimeouts()
             nextMembershipListLock.RLock()
@@ -570,13 +590,20 @@ func (m *manager) proposeRoutine() {
             case LEAD_PROPOSAL:
                 if mlist["CONFIRMED_LEADER"] == 1 {
                     m.proposeRoutineCh <- "RESET"
+                    leadCancel()
                 }
 
                 // another leader asking to install view
-                if mlist["INSTALL_VIEW"] == 1  && mlist["VIEW_ID"] > int64(m.viewID) {
-                    m.log.Debug("state FOLLOW_ANY")
-                    m.state = FOLLOW_ANY
-                    m.installMembershipView(mlist, src.String())
+                if mlist["INSTALL_VIEW"] == 1 && mlist["VIEW_ID"] > int64(m.viewID) {
+                    if mlist[m.host.ID().String()] > 0 {
+                        if m.updateMembershipList(mlist) {
+                            m.log.Error("ERR: leader said to install but I have more nodes!")
+                        }
+                        m.log.Debug("state FOLLOW_ANY")
+                        m.state = FOLLOW_ANY
+                        m.installMembershipView(mlist, src.String())
+                    }
+                    leadCancel()
                     m.proposeRoutineCh <- "RESET"
                     break
                 }
@@ -588,6 +615,7 @@ func (m *manager) proposeRoutine() {
                 }
             case FOLLOW_ANY:
                 if mlist["PROPOSE"] == 1 && int64(mlist["VIEW_ID"]) > m.membershipList["VIEW_ID"] {
+                    proposeTicker.Stop()
                     m.log.Debug("ACKing proposal for membership update to node", m.libp2pIDs[src])
                     m.updateMembershipList(mlist)
                     nextMembershipListLock.RLock()
@@ -596,31 +624,33 @@ func (m *manager) proposeRoutine() {
                     m.psub.Publish(src.String(), ackResp)
                     leader = src.String()
                     m.state = FOLLOW_PROPOSER
-                    proposeTicker.Stop()
-                    followTimeo = time.NewTicker(time.Duration(m.conf.FollowerTimeout) * time.Second)
-                    m.log.Debug("state FOLLOW_PROPOSER")
-                    m.membershipBroadcastCh<-"STOP_BROADCAST"
+                    followTimeo = time.NewTicker(m.conf.FollowerTimeout)
+                    m.log.Debugf("state FOLLOW_PROPOSER, leader: %s\n", src.String())
                 }
                 // fixme: respond to out of sync node? (trying to propose lower viewID, etc)
             case FOLLOW_PROPOSER:
 RESPOND_TO_PROPOSER:
-                if src.String() == leader {
-                    //only respond to vote tables
-                    if mlist["VOTE_TABLE"] == 1 {
-                        if mlist[m.host.ID().String()] < 1 {
-                            nextMembershipListLock.RLock()
-                            ackResp, _ := json.Marshal(createAck(m.nextMembershipList))
-                            nextMembershipListLock.RUnlock()
-                            m.psub.Publish(src.String(), ackResp)
-                        }
+                if src.String() == leader && mlist["VIEW_ID"] > int64(m.viewID) {
+                    if mlist["VOTE_TABLE"] == 1 && mlist[m.host.ID().String()] < 1 {
+                        nextMembershipListLock.RLock()
+                        ackResp, _ := json.Marshal(createAck(m.nextMembershipList))
+                        nextMembershipListLock.RUnlock()
+                        m.psub.Publish(src.String(), ackResp)
+                        m.log.Warningf("ACKING LEADER VOTE TABLE\n")
+                        m.log.Warning(mlist)
                     }
-                    if mlist["INSTALL_VIEW"] == 1  && mlist["VIEW_ID"] > int64(m.viewID) {
-                        m.log.Debug("state FOLLOW_ANY")
-                        m.state = FOLLOW_ANY
-                        followTimeo.Stop()
-                        m.installMembershipView(mlist, leader)
-                        m.proposeRoutineCh <- "RESET"
-                        break
+                    if mlist["INSTALL_VIEW"] == 1 {
+                        if _, exists := mlist[m.host.ID().String()]; exists {
+                            if m.updateMembershipList(mlist) {
+                                m.log.Error("ERR: have more in mlist than leader")
+                            }
+                            m.log.Debug("state FOLLOW_ANY")
+                            m.state = FOLLOW_ANY
+                            followTimeo.Stop()
+                            m.installMembershipView(mlist, leader)
+                            m.proposeRoutineCh <- "RESET"
+                            break
+                        }
                     }
                     if mlist["PROPOSE"] == 1 {
                         if m.updateMembershipList(mlist) {
@@ -629,22 +659,29 @@ RESPOND_TO_PROPOSER:
                             nextMembershipListLock.RUnlock()
                             m.psub.Publish(src.String(), ackResp)
                         }
+                    } else if mlist["PROPOSE"] == -1 {
+                        m.log.Debug("leader cancelled")
+                        m.state = FOLLOW_ANY
+                        followTimeo.Stop()
+                        m.proposeRoutineCh <- "RESET"
+                        break
                     }
+                    followTimeo = time.NewTicker(m.conf.FollowerTimeout)
                 } else {
                     if mlist["CONFIRMED_LEADER"] == 1 && mlist["VIEW_ID"] > int64(m.viewID) {
+                        m.log.Info("Switched leader to node", m.libp2pIDs[src])
                         leader = src.String()
                         goto RESPOND_TO_PROPOSER
                     }
                     //already responded to a leader, NACK any other proposals
                     if mlist["PROPOSE"] == 1 {
+                        m.log.Warning("sent nack, already following someone")
                         nackResp, _ := json.Marshal(nack)
                         m.psub.Publish(src.String(), nackResp)
                     }
                 }
-            } // switch
-
+            } // switch, <-rcvdMsg
             nextMsg <- true
-
         case <-followTimeo.C:
             m.log.Debug("FOLLOW_PROPOSER timeout!")
             m.state = FOLLOW_ANY
@@ -655,25 +692,25 @@ RESPOND_TO_PROPOSER:
             switch status {
             case "RESET":
                 m.log.Debug("Resetting proposeRoutine()...")
-
-                m.state = FOLLOW_ANY
                 m.log.Debug("state FOLLOW_ANY")
+                m.state = FOLLOW_ANY
                 proposeHeartbeat.Stop()
                 nextMembershipListLock.Lock()
                 delete(m.nextMembershipList, "CONFIRMED_LEADER") //just in case
                 delete(m.nextMembershipList, "PROPOSE")
                 delete(m.nextMembershipList, "INSTALL_VIEW")
                 nextMembershipListLock.Unlock()
-
-                proposeTicker = time.NewTicker(time.Duration(m.conf.ProposeTimerMin * 1000 +
-                    rand.Intn((m.conf.ProposeTimerMax - m.conf.ProposeTimerMin) * 100) * 10) *
-                    time.Millisecond)
-                m.membershipBroadcastCh<-"START_BROADCAST"
+                interval = (m.conf.ProposeTimerMax - m.conf.ProposeTimerMin) * 1000 / 100
+                tickerTime = time.Duration(rand.Intn(interval) * 100) * time.Millisecond +
+                              time.Duration(m.conf.ProposeTimerMin) * time.Second
+                proposeTicker = time.NewTicker(tickerTime)
+                m.log.Debug("proposeTicker: ", tickerTime)
+                leader = ""
             case "CONFIRMED_LEADER":
-                m.log.Debug("confirmed leader node")
                 //include leader confirmation in membership broadcast
                 nextMembershipListLock.Lock()
                 if m.nextMembershipList["CONFIRMED_LEADER"] == 0 {
+                    m.log.Debug("confirmed leader node")
                     m.nextMembershipList["CONFIRMED_LEADER"] = 1
                 }
                 nextMembershipListLock.Unlock()
@@ -712,14 +749,12 @@ func (m *manager) membershipBroadcastHandler() {
 
     for {
         got, _ := sub.Next(m.ctx)
-
         mlist := make(map[string]int64)
         json.Unmarshal(got.Data, &mlist)
         src, _ := peer.IDFromBytes(got.From)
 
         if src.String() != m.host.ID().String() {
             m.checkPeerTimeouts()
-
             nextMembershipListLock.Lock()
             for addr, timestamp := range mlist {
                 if isAddr(addr) {
@@ -772,6 +807,15 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
     nextMembershipListLock.Lock()
     defer nextMembershipListLock.Unlock()
 
+    for addr, _ := range m.membershipList {
+        if isAddr(addr) {
+            if _, exists := m.nextMembershipList[addr]; !exists {
+                p, _ := peer.IDB58Decode(addr)
+                m.host.Network().ClosePeer(p)
+            }
+        }
+    }
+
     var memberNodeIDs []int
     var memberLibp2pIDs []peer.ID
     reconcile := m.reconcileNeeded(m.membershipList, mlist)
@@ -784,8 +828,8 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
 
     for addr, _ := range mlist {
         if isAddr(addr) {
-            m.membershipList[addr] = time.Now().Unix()
-            m.nextMembershipList[addr] = time.Now().Unix()
+            m.membershipList[addr] = time.Now().UnixNano()
+            m.nextMembershipList[addr] = time.Now().UnixNano()
             id, _ := peer.IDB58Decode(addr)
             memberNodeIDs = append(memberNodeIDs, m.libp2pIDs[id])
             memberLibp2pIDs = append(memberLibp2pIDs, id)
@@ -804,9 +848,6 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
             return
         }
     }
-
-    m.log.Debugf("***INSTALLED VIEW %d***", viewID)
-    m.log.Debugf("member node IDs: %+v\n", memberNodeIDs)
 
     h := sha1.New()
     h.Write([]byte(leader + string(m.viewID)))
@@ -829,6 +870,8 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
     }
 
     m.partManager.NewNetwork(info)
+    m.log.Debugf("************** INSTALLED VIEW %d **************", viewID)
+    m.log.Debugf("member node IDs: %+v\n", memberNodeIDs)
     // monitor.ReportEventRequest("172.16.0.254:32001", "http://0.0.0.0:8086",
     //     strconv.Itoa(m.conf.NodeID), m.membershipID)
 }
