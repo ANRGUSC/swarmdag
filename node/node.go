@@ -1,11 +1,11 @@
 package node
 
 import (
-	"net"
 	"os"
+	"net"
 	"fmt"
 	"context"
-    "time"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -18,10 +18,7 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("swarmdag")
-var format = logging.MustStringFormatter(
-    `%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}`,
-)
+
 
 func getIPAddr() (addr string, addrEnd int) {
     //need a safer way to grab IP addr
@@ -65,21 +62,13 @@ type Node struct {
 
 func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     var gossipPrivKey crypto.PrivKey
-
     gossipHost, addrEnd := getIPAddr()
     nodeID := addrEnd - 1  // TODO: -1 for lxc, -2 for docker
-
-    // logfile := fmt.Sprintf("file-swarmdag%d.log", nodeID)
-    // f, err := os.OpenFile(logfile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-    // backend1 := logging.NewLogBackend(f, "", 0)
-    backend2 := logging.NewLogBackend(os.Stdout, "", 0)
-    // b1 := logging.AddModuleLevel(backend1)
-    b2 := logging.AddModuleLevel(backend2)
-
-    // b1.SetLevel(logging.DEBUG, "")
-    b2.SetLevel(logging.DEBUG, "")
-    // logging.SetBackend(b1, b2)
-    logging.SetBackend(b2)
+    log := logging.MustGetLogger("swarmdag")
+    format := logging.MustStringFormatter(`%{level}:%{message}`)
+    logging.SetBackend(logging.NewLogBackend(os.Stdout, "", 0))
+    logging.SetLevel(logging.DEBUG, "swarmdag")
+    logging.SetFormatter(format)
 
     k, err := getPrivKey(keyfile, nodeID)
     if err != nil {
