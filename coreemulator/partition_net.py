@@ -114,7 +114,7 @@ for i in range(1, num_nodes + 1):
     print("starting swarmdag on node: %s" % n.name)
     n.cmd("route add 172.17.0.0 dev ctrl0", wait=True)
     n.cmd("route add -net 172.0.0.0 netmask 255.0.0.0 dev ctrl0", wait=True)
-    n.cmd(f"sh -c '{swarmdag_path}/swarmdag > {swarmdag_path}/swarmdag{i - 1}.log'", wait=False)
+    n.cmd(f"sh -c '{swarmdag_path}/swarmdag >> {swarmdag_path}/swarmdag{i - 1}.log 2>&1'", wait=False)
 
 
 # TODO: is something like this necessary for the host to talk to the CORE
@@ -149,7 +149,7 @@ toggle = True
 while True:
     # Note: If timeouts occur during the membership proposing process, then 20
     # sec might not be long enough of a partition time.
-    time.sleep(10)
+    time.sleep(20)
     newLoc = NodeOptions()
     if toggle is True:
         print("partitioned network")

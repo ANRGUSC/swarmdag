@@ -1,6 +1,7 @@
 package ledger
 
 import (
+	"errors"
 	"time"
 	"context"
 	"strings"
@@ -98,7 +99,7 @@ func NewDAG(
         ParentHash1:    "",
         Timestamp:      int64(1608123456),
         // 0d54c6bcdfad49ec071ba01601d44df398fc19db
-        MembershipID:   "fc19db",
+        MembershipID:   "98fc19db",
         Key:            "Genesis",
         Value:          "Genesis",
     }
@@ -205,13 +206,16 @@ func SortbyHash(txs []Transaction) {
 }
 
 // direction of 1 means to search up the DAG, -1 means to search down the DAG
-func (d *DAG) recursiveSearch(membershipID string, direction int) string {
+func (d *DAG) recursiveSearch(membershipID string, direction int) (string, error){
     var hash string
 
     // Grab a tx with this membershipID and start iterating from there
     p := cayley.StartPath(d.DB, quad.String(membershipID)).
         In(quad.String("membershipID"))
-    tx, _ := p.Iterate(nil).FirstValue(nil)
+    tx, err := p.Iterate(nil).FirstValue(nil)
+    if err != nil {
+        return "", errors.New("Error: recursiveSearch() no Tx for chain" + membershipID)
+    }
     txHash := strings.Trim(tx.String(), "\"")
     if direction == 1 {
         p = path.StartPath(d.DB, quad.String(txHash)).
@@ -232,24 +236,27 @@ func (d *DAG) recursiveSearch(membershipID string, direction int) string {
 
     // Only one tx with this membershipID
     if hash == "" {
-        return txHash
+        return txHash, nil
     }
-    return hash
+    return hash, nil
 }
 
-func (d *DAG) getAlpha(membershipID string) string {
+func (d *DAG) getAlpha(membershipID string) (string, error) {
     if membershipID == "" {
-        return ""
+        return "", nil
     }
-    return d.recursiveSearch(membershipID, 1)
+    r, err := d.recursiveSearch(membershipID, 1)
+    return r, err
 }
 
 // Get hash of tip of membership's chain
-func (d *DAG) GetTip(membershipID string) string {
+func (d *DAG) GetTip(membershipID string) (string, error) {
     if membershipID == "" {
-        return ""
+        return "", nil
     }
-    return d.recursiveSearch(membershipID, -1)
+
+    r, err := d.recursiveSearch(membershipID, -1)
+    return r, err
 }
 
 // Search returns nil if not found
@@ -318,15 +325,23 @@ func (d *DAG) createAlphaTx(
     alphaTxTime int64,
 ) {
     if prevChain0 == "" {
-        prevChain0 = "fc19db"
+        prevChain0 = "98fc19db"
     }
     if alphaTxTime == 0 {
         alphaTxTime = 1608123456 + 1
     }
-    parent0 := d.GetTip(prevChain0)
-    d.log.Warningf("createalpha p0: %s\n", parent0)
-    parent1 := d.GetTip(prevChain1)
-    d.log.Warningf("createalpha p1: %s\n", parent1)
+    parent0, err := d.GetTip(prevChain0)
+    if err != nil {
+        parent0 = "errorTx"
+        d.log.Error(err)
+    }
+    d.log.Debugf("createalpha p0: %s\n", parent0)
+    parent1, err := d.GetTip(prevChain1)
+    if err != nil {
+        parent1 = "errorTx"
+        d.log.Error(err)
+    }
+    d.log.Debugf("createalpha p1: %s\n", parent1)
 
     alpha := Transaction{
         Hash:           "",

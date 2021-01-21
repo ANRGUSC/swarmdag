@@ -27,9 +27,9 @@ func main() {
             NodeID: -1, // TODO: wht to do with this?
             BroadcastPeriod: 250 * time.Millisecond,
             ProposeHeartbeatInterval: 200 * time.Millisecond,
-            ProposeTimerMin: 2, //todo
-            ProposeTimerMax: 4,
-            PeerTimeout: 1500 * time.Millisecond,
+            ProposeTimerMin: 1, //todo
+            ProposeTimerMax: 3,
+            PeerTimeout: 2000 * time.Millisecond,
             LeaderTimeout: 5 * time.Second,
             FollowerTimeout: 2 * time.Second, // needs to be greater than ProposeHeartbeatInterval
             MajorityRatio: 0.51,

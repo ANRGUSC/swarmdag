@@ -1,6 +1,7 @@
 package partition
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"io"
@@ -17,13 +18,14 @@ import (
 	"github.com/tendermint/tendermint/types"
 	tmtime "github.com/tendermint/tendermint/types/time"
 	"github.com/libp2p/go-libp2p-core/peer"
+	dbm "github.com/tendermint/tm-db"
 
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/ledger"
 	abciserver "github.com/tendermint/tendermint/abci/server"
 	"github.com/tendermint/tendermint/libs/service"
 	tmlog "github.com/tendermint/tendermint/libs/log"
-    rpchttp "github.com/tendermint/tendermint/rpc/client/http"
+	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
 )
 
 const (
@@ -50,35 +52,55 @@ type NetworkInfo struct {
 }
 
 type Manager interface {
-    NewNetwork(info NetworkInfo)
+    NewNetwork(info NetworkInfo) error
 }
 
 type manager struct {
     nodeID      int
     log         *logging.Logger
-    instances   map[*tmn.Node]service.Service
+    instances   map[*Node]service.Service
     dag         *ledger.DAG
-    tmlogger    tmlog.Logger
+    logfd       *os.File
 }
 
-func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
-    logfile := fmt.Sprintf("tmlog%d.log", nodeID)
-    f, _ := os.OpenFile(logfile, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0766)
-    l := tmlog.NewTMLogger(tmlog.NewSyncWriter(f))
-    tmlogger, _ := tmflags.ParseLogLevel(tmLogLevel, l, cfg.DefaultLogLevel())
+// Wrapper around Tendermint node's closeable resources (database file desc.)
+type Node struct {
+    *tmn.Node
+    closers []interface{
+        Close() error
+    }
+}
 
+func DBProvider(ID string, backendType dbm.BackendType, dbDir string) dbm.DB {
+    return dbm.NewDB(ID, backendType, dbDir)
+}
+
+// Since Tendermint doesn't close its DB connections
+func (n *Node) DBProvider(ctx *tmn.DBContext) (dbm.DB, error) {
+    db := DBProvider(ctx.ID, dbm.BackendType(ctx.Config.DBBackend), ctx.Config.DBDir())
+    n.closers = append(n.closers, db)
+    return db, nil
+}
+
+func (n *Node) Close() {
+    for _, closer := range n.closers {
+        closer.Close()
+    }
+}
+
+
+func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
     m := &manager {
         nodeID: nodeID,
         log: log,
-        instances: make(map[*tmn.Node]service.Service, 1),
+        instances: make(map[*Node]service.Service, 8),
         dag: dag,
-        tmlogger: tmlogger,
     }
     return m
 }
 
 // To be called by Membership Manager upon view installation
-func (m *manager) NewNetwork(info NetworkInfo) {
+func (m *manager) NewNetwork(info NetworkInfo) error {
     var c0, c1 string
     var ts int64
 
@@ -95,17 +117,17 @@ func (m *manager) NewNetwork(info NetworkInfo) {
     if len(info.Libp2pIDs) == 1 {
         m.stopOldNetworks()
         m.log.Info("partition: lone node, not creating new network")
-        return
+        return nil
     }
 
     if info.ReconcileNeeded {
         // Barrier-providing function: requires 100% partition agreement before
         // returning
         c0, c1, ts = ledger.Reconcile(info.Libp2pIDs, info.AmLeader, m.dag, m.log)
-        if c0 == "" && c1 == "" && ts == 0 {
+        if c0 == "" && c1 == "" && ts == -1 {
             m.log.Info("reconciler timed out (at least 1 node failed)")
             m.stopOldNetworks()
-            return
+            return errors.New("timeout")
         }
     }
     m.stopOldNetworks()
@@ -113,36 +135,47 @@ func (m *manager) NewNetwork(info NetworkInfo) {
     // start ABCI app
     app := ledger.NewABCIApp(m.dag, m.log, info.ChainID, c0, c1, ts)
     server := abciserver.NewSocketServer(abciAppAddr, app)
-    server.SetLogger(m.tmlogger)
+    logfile := fmt.Sprintf("tmlog%d.log", m.nodeID)
+    if m.logfd != nil {
+        m.logfd.Close() // close existing file descr.
+    }
+    m.logfd, _ = os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY, 0766)
+    l := tmlog.NewTMLogger(tmlog.NewSyncWriter(m.logfd))
+    tmlogger, _ := tmflags.ParseLogLevel(tmLogLevel, l, cfg.DefaultLogLevel())
+    server.SetLogger(tmlogger)
     if err := server.Start(); err != nil {
         m.log.Fatalf("error starting socket server: %v\n", err)
     }
 
     // start tendermint
-    node, err := m.newTendermint(abciAppAddr, info)
+    node, err := m.newTendermint(abciAppAddr, info, tmlogger)
     if err != nil {
         m.log.Fatalf("error starting new tendermint net: %v", err)
     }
 
     node.Start()
     m.instances[node] = server
-    m.log.Info("partition: started new tendermint instance")
+    return nil
 }
 
 func (m *manager) stopOldNetworks() {
     for node, server := range m.instances {
         m.log.Infof("Stopping network instance %p", node)
         node.Stop()
-        node.Wait() // does this wait for a block in a round to finish?
-        delete(m.instances, node)
-        m.tmlogger.Info("SwarmDAG: Tendermint node shutdown", "msg", "nil")
+        node.Wait()
+        node.Close()
         if err := server.Stop(); err != nil {
             m.log.Fatalf("error starting socket server: %v\n", err)
         }
+        delete(m.instances, node)
     }
 }
 
-func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, error) {
+func (m *manager) newTendermint(
+    appAddr string,
+    info NetworkInfo,
+    tmlogger tmlog.Logger,
+) (*Node, error) {
     config := cfg.DefaultConfig()
     chainDir := fmt.Sprintf("tmp/chain-%s/node%d/config", info.ChainID, m.nodeID)
     config.RootDir = filepath.Dir(filepath.Join(rootDirStart, chainDir))
@@ -212,7 +245,7 @@ func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, er
             if _, err := os.Stat(genesisFile); os.IsNotExist(err) {
                 time.Sleep(500 * time.Millisecond)
                 retries += 1
-                if retries > 20 {
+                if retries > 30 {
                     panic("Directories not created by leader, exiting...")
                 }
             } else {
@@ -265,24 +298,24 @@ func (m *manager) newTendermint(appAddr string, info NetworkInfo) (*tmn.Node, er
         return nil, fmt.Errorf("failed to load node's key: %w", err)
     }
 
-    // create node
+    nde := &Node{}
 
-    m.tmlogger.Info("SwarmDAG: Starting new Tendermint node", "msg", "nil")
-    node, err := tmn.NewNode(
+    // create node
+    nde.Node, err = tmn.NewNode(
         config,
         pv,
         nodeKey,
         proxy.NewRemoteClientCreator(appAddr, "socket", true),
         tmn.DefaultGenesisDocProviderFunc(config),
-        tmn.DefaultDBProvider,
+        nde.DBProvider,
         tmn.DefaultMetricsProvider(config.Instrumentation),
-        m.tmlogger,
+        tmlogger,
     )
     if err != nil {
         return nil, fmt.Errorf("failed to create new Tendermint node: %w", err)
     }
 
-    return node, nil
+    return nde, nil
 }
 
 func copyFile(src, dst string) error {

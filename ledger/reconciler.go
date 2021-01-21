@@ -1,9 +1,11 @@
 package ledger
 
 import (
+	"sync"
 	"time"
 	"context"
 	"sort"
+	"fmt"
 	"encoding/json"
 	logging "github.com/op/go-logging"
 	"github.com/libp2p/go-libp2p-pubsub"
@@ -13,8 +15,9 @@ import (
 const (
 	topic = "reconcile"
 	repeatsRequired = 2
-	pullReqInterval = 300 * time.Millisecond
-	reconcilerTimeout = 8 * time.Second
+	pullReqInterval = 500 * time.Millisecond
+	reconcilerTimeout = 10 * time.Second
+	maxPullReqs = 5
 )
 
 type txInfo struct {
@@ -47,6 +50,8 @@ type reconciler struct {
 	newPullCh chan pendingPull
 	prevChainIDs map[string]struct{}
 	alphaTxTime int64
+	wg sync.WaitGroup
+	bcastLock sync.Mutex
 }
 
 func createMsg(prevChainID string, index Index) reconcileMsg {
@@ -68,7 +73,9 @@ func (r *reconciler) ledgerBroadcast(ctx context.Context) {
 	for {
 		select {
 		case <-bcastTicker.C:
+			r.bcastLock.Lock()
 			rMsg, _ := json.Marshal(createMsg(r.dag.ChainID(), r.dag.Idx))
+			r.bcastLock.Unlock()
 			r.dag.psub.Publish(topic, rMsg)
 		case <-ctx.Done():
 			return
@@ -84,8 +91,9 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 
 	go func() {
 		for {
-			m, err := sub.Next(ctx)
+			m, err := sub.Next(context.Background())
 			if err != nil {
+				close(msgCh)
 				return
 			}
 			msgCh <- m
@@ -93,16 +101,33 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 	}()
 
 	for {
+		// Note: design requires ctx.Done() to be above <-msgCh for thr safety
 		select {
-		case m := <-msgCh:
+		case p := <-r.newPullCh:
+			pending[p.peer] = p.doneCh
+		case <-ctx.Done():
+			// cleanup
+			sub.Cancel()
+			for range msgCh {}
+			for _, done := range pending {
+				select {
+				case done <- true:
+				default:
+				}
+			}
+			for p := range r.newPullCh {p.doneCh <- true}
+			return
+		case m, _ := <-msgCh:
 			json.Unmarshal(m.Data, &rMsg)
 
 			switch rMsg.MsgType {
 			case "pullResp":
 				if _, exists := pending[m.GetFrom()]; exists {
+					r.bcastLock.Lock()
 					for _, tx := range rMsg.Transactions {
 						r.dag.InsertTx(&tx)
 					}
+					r.bcastLock.Unlock()
 					select {
 					case pending[m.GetFrom()] <- true:
 					default:
@@ -118,11 +143,6 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 				})
 				r.dag.psub.Publish("pull-" + m.GetFrom().String(), pullResp)
 			}
-		case p := <-r.newPullCh:
-			pending[p.peer] = p.doneCh
-		case <-ctx.Done():
-			sub.Cancel()
-			return
 		}
 	}
 }
@@ -151,7 +171,11 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 	r.log.Infof("my hash: %d, their hash: %d\n", r.dag.Idx.HashLedger(), rMsg.LedgerHash)
 
 	p := pendingPull{srcID, make(chan bool, 1)}
-	r.newPullCh <- p
+	select {
+		case r.newPullCh <- p:
+		default:
+			return // reconciler timed out
+	}
 	pullReq, _ := json.Marshal(
 		reconcileMsg {
 			MsgType: "pullReq",
@@ -170,7 +194,15 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 }
 
 func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
+	defer r.log.Debug("stop reconciler broadcasting")
 	sub, _ := r.dag.psub.Subscribe(topic)
+	var lock sync.Mutex
+
+	// Record of pending pull requests by peer's ledger hash (not ID). This
+	// prevents sending a pull req to more than 1 node with the same ledger and
+	// sending concurrent pull requests to a single node.
+	pending := make(map[uint64]bool, maxPullReqs)
+	waitFor := make(map[peer.ID]bool)
 
 	var rMsg reconcileMsg
 	for {
@@ -190,21 +222,44 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 
 		r.prevChainIDs[rMsg.PrevChainID] = struct{}{}
 
+		lock.Lock()
 		if (rMsg.LedgerHash == r.dag.Idx.HashLedger()) {
 			r.peerRepeats[srcID]++
 		} else {
-			r.sendPullReq(srcID, rMsg)
-			r.peerRepeats[srcID] = 0
+			if len(pending) < maxPullReqs {
+				if _, exists := pending[rMsg.LedgerHash]; !exists {
+					if waitFor[srcID] != true {
+						waitFor[srcID] = true
+						pending[rMsg.LedgerHash] = true
+						go func(id peer.ID) {
+							r.wg.Add(1)
+							var rm reconcileMsg
+							json.Unmarshal(m.Data, &rm)
+							r.sendPullReq(id, rm)
+							lock.Lock()
+							r.peerRepeats[id] = 0
+							delete(pending, rm.LedgerHash)
+							delete(waitFor, id)
+							lock.Unlock()
+							r.wg.Done()
+						}(srcID)
+					}
+				}
+
+			}
 		}
+		lock.Unlock()
 
 		// stop reconciliation if same msg rcvd received enough times
 		if r.amLeader {
 			notFinished := false
+			lock.Lock()
 			for _, repeats := range r.peerRepeats {
 				if repeats < repeatsRequired {
 					notFinished = true
 				}
 			}
+			lock.Unlock()
 			if notFinished {
 				continue
 			}
@@ -223,6 +278,7 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 func timeout(ctx context.Context, cancel context.CancelFunc) {
 	select {
 	case <-time.After(reconcilerTimeout):
+		fmt.Println("reconciler timeout")
 		cancel()
 	case <-ctx.Done():
 	}
@@ -248,34 +304,46 @@ func Reconcile(
 		peerRepeats: peerRepeats,
 		dag: dag,
 		log: log,
-		newPullCh: make(chan pendingPull),
+		newPullCh: make(chan pendingPull, maxPullReqs),
 		prevChainIDs: make(map[string]struct{}, 2),
 	}
+	defer close(r.newPullCh)
 	r.prevChainIDs[r.dag.ChainID()] = struct{}{}
 
 	ctx, cancel := context.WithCancel(dag.ctx)
 	defer cancel()
 
 	timeoCtx, timeoCancel := context.WithCancel(ctx)
-	go r.ledgerBroadcast(ctx)
-	go r.pullMsgHandler(ctx)
-	go timeout(timeoCtx, timeoCancel)
+	go r.ledgerBroadcast(timeoCtx)
+	go r.pullMsgHandler(timeoCtx)
+	go timeout(ctx, timeoCancel)
 	r.broadcastMsgHandler(timeoCtx)
 
-	log.Infof("Sanity check -- my hash: %d\n", dag.Idx.HashLedger())
+	r.wg.Wait()
+	log.Infof("Reconciler finished -- my ledger hash: %d\n", dag.Idx.HashLedger())
 
-	prevChainIDs := []string{"", ""}
-	i := 0
+	// TODO: if an error occurs, there may be MORE parents than 2.......
+	var prevChainIDs []string
 	for chainID := range r.prevChainIDs {
-		prevChainIDs[i] = chainID
-		i++
+		prevChainIDs = append(prevChainIDs, chainID)
 	}
 	sort.Strings(prevChainIDs)
 
+	if len(prevChainIDs) > 2 {
+		r.log.Error(
+			"Error: unexpected network merge of >2 partitions. Need to slow",
+			"down network partition event rate!",
+		)
+	}
+
 	if r.alphaTxTime > 0 {
 		// prevChainIDs[1] is empty during clean network split
-		return prevChainIDs[0], prevChainIDs[1], r.alphaTxTime
+		if len(prevChainIDs) > 1 {
+			return prevChainIDs[0], prevChainIDs[1], r.alphaTxTime
+		} else {
+			return prevChainIDs[0], "", r.alphaTxTime
+		}
 	} else {
-		return "", "", 0
+		return "", "", -1
 	}
 }

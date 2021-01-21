@@ -163,9 +163,6 @@ func NewManager(
 
         leadingProposalCh:          make(chan chan *pubsub.Message),
     }
-
-    m.log.Debugf("sanity check %+v\n", conf)
-
     return m
 }
 
@@ -184,7 +181,7 @@ func (m *manager) ConnectHandler(c network.Conn) {
 
 func (m *manager) Start() {
     m.host.Network().SetConnHandler(m.ConnectHandler)
-    peerChan := initMDNS(m.ctx, m.host, "rendezvousStr", 200 * time.Millisecond)
+    peerChan := initMDNS(m.ctx, m.host, "rendezvousStr", 1000 * time.Millisecond)
     m.membershipList[m.host.ID().String()] = time.Now().UnixNano()
     m.membershipList["VIEW_ID"] = int64(m.viewID)
     m.nextMembershipList["VIEW_ID"] = int64(m.viewID + 1)
@@ -314,7 +311,8 @@ func (m *manager) directMsgDispatcher() {
         for {
             msg, err := sub.Next(m.ctx)
             if err != nil {
-                panic(err)
+                close(msgCh)
+                return
             }
             msgCh <- msg
         }
@@ -333,6 +331,7 @@ func (m *manager) directMsgDispatcher() {
             }
         case leadCh = <-m.leadingProposalCh:
         case <-m.ctx.Done():
+            for range msgCh {}
             return
         }
     }
@@ -407,13 +406,7 @@ func (m *manager) leadProposal(ctx context.Context) {
 
                 // stop-gap for "membership_propose" topic to propagate
                 m.psub.Publish("membership_propose", installMsg)
-                m.log.Debug(string(installMsg))
-                // time.Sleep(200 * time.Millisecond)
-                // m.psub.Publish("membership_propose", installMsg)
-                // m.psub.Publish("membership_propose", installMsg)
-                // time.Sleep(200 * time.Millisecond)
-                // m.psub.Publish("membership_propose", installMsg)
-                // m.psub.Publish("membership_propose", installMsg)
+                m.log.Debug("installList: ", string(installMsg))
                 m.installMembershipView(installList, m.host.ID().String())
                 return
             }
@@ -851,7 +844,7 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
 
     h := sha1.New()
     h.Write([]byte(leader + string(m.viewID)))
-    m.membershipID = hex.EncodeToString(h.Sum(nil))[:6] // increase len if needed...
+    m.membershipID = hex.EncodeToString(h.Sum(nil))[:8] // increase len if needed...
 
     var amLeader bool
     if m.host.ID().String() == leader {
@@ -869,7 +862,16 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
         ReconcileNeeded: reconcile,
     }
 
-    m.partManager.NewNetwork(info)
+    err := m.partManager.NewNetwork(info)
+    if err != nil {
+        // prepare internal state to redo membership update
+        m.membershipList = make(map[string]int64)
+        m.membershipList["VIEW_ID"] = int64(viewID - 1)
+        m.viewID = viewID - 1
+        m.nextMembershipList["VIEW_ID"] = int64(viewID)
+        m.log.Info("Membership installation failed")
+        return
+    }
     m.log.Debugf("************** INSTALLED VIEW %d **************", viewID)
     m.log.Debugf("member node IDs: %+v\n", memberNodeIDs)
     // monitor.ReportEventRequest("172.16.0.254:32001", "http://0.0.0.0:8086",
