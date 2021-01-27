@@ -31,7 +31,6 @@ import (
 const (
     // ipPrefix = "0.0.0"
     ipPrefix = "192.168.10" // prefix for all containers
-    idToIPOffset = 1    // determines IP addr: e.g. node2 has IP  x.x.x.4 , 2 works for docker, core not yet finished
     tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
     abciAppAddr = "0.0.0.0:20000"
 )
@@ -61,6 +60,7 @@ type manager struct {
     instances   map[*Node]service.Service
     dag         *ledger.DAG
     logfd       *os.File
+    idToIPOffset int
 }
 
 // Wrapper around Tendermint node's closeable resources (database file desc.)
@@ -89,12 +89,22 @@ func (n *Node) Close() {
 }
 
 
-func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG) Manager {
+func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG, orchestrator string) Manager {
+    var offset int
+    switch orchestrator {
+    case "core":
+        offset = 1
+    case "docker":
+        offset = 2  // Bridge takes up x.x.x.1, start IP addrs at x.x.x.2
+    default:
+        log.Critical("NewManager(): invalid orchestrator")
+    }
     m := &manager {
         nodeID: nodeID,
         log: log,
         instances: make(map[*Node]service.Service, 8),
         dag: dag,
+        idToIPOffset: offset,
     }
     return m
 }
@@ -214,7 +224,7 @@ func (m *manager) newTendermint(
         }
 
         persistentPeers[i] = p2p.IDAddressString(nodeKey.ID(),
-            fmt.Sprintf("%s.%d:40000", ipPrefix, nodeID + idToIPOffset))
+            fmt.Sprintf("%s.%d:40000", ipPrefix, nodeID + m.idToIPOffset))
     }
 
     if info.AmLeader {

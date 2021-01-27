@@ -14,6 +14,7 @@ gen-keys:
 	@if [ ! -d ./build/templates/ ]; then mkdir -p ./build/templates; fi
 	./build/tendermint testnet --v 4 --o ./build/templates
 	go run tools/keygen.go -n 4 -o ./build/templates/
+.PHONY: gen-keys
 
 get-tendermint:
 	@if [ ! -d ./build ]; then mkdir build/; fi
@@ -23,36 +24,48 @@ get-tendermint:
 		rm tendermint_v${TENDERMINT_VER}_linux_amd64.zip; \
 		mv tendermint ./build/tendermint; \
 	fi
+.PHONY: get-tendermint
 
 build-docker:
 	docker build -t "anrg/swarmdag" ./DOCKER/
+.PHONY: build-docker
 
 push:
 	docker push "anrg/swarmdag"
+.PHONY: push
 
 build:
 	@if [ -f ./build/swarmdag ]; then rm ./build/swarmdag; fi
 	go build -o ./build/swarmdag ./cmd/swarmdag/main.go
+.PHONY: build
 
 local:
 	docker-compose up
+.PHONY: local
 
 stop:
 	docker-compose down
+.PHONY: stop
 
 rm_tmp:
 	sudo rm -rf build/tmp/
+.PHONY: rm_tmp
+
+rm_logs:
+	sudo rm -f build/tmlog*.log
+.PHONY: rm_logs
 
 run: stop build rm_tmp local
 	echo "did ALL the things"
+.PHONY: run
 
-full: build rm_tmp
+full: build rm_tmp rm_logs
 	sudo core-cleanup
-	cd coreemulator; sudo core-python partition_net.py
+	cd coreemulator; sudo core-python wlan_partition.py
+.PHONY: full
 
 clean:
 	# need sudo becuase Docker containers run as root
 	docker-compose down
 	sudo rm -rf build/
-
-.PHONY: gen-keys get-tendermint build build-docker push build-partition local stop clean rm_tmp
+.PHONY: clean

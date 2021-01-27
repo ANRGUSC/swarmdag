@@ -311,7 +311,6 @@ func Reconcile(
 	r.prevChainIDs[r.dag.ChainID()] = struct{}{}
 
 	ctx, cancel := context.WithCancel(dag.ctx)
-	defer cancel()
 
 	timeoCtx, timeoCancel := context.WithCancel(ctx)
 	go r.ledgerBroadcast(timeoCtx)
@@ -319,6 +318,7 @@ func Reconcile(
 	go timeout(ctx, timeoCancel)
 	r.broadcastMsgHandler(timeoCtx)
 
+	cancel()
 	r.wg.Wait()
 	log.Infof("Reconciler finished -- my ledger hash: %d\n", dag.Idx.HashLedger())
 

@@ -2,7 +2,8 @@ package main
 
 import (
 	"os"
-	// "syscall"
+    "flag"
+    "syscall"
 	"time"
 	"fmt"
 	"encoding/json"
@@ -16,9 +17,18 @@ const (
     txInterval = 200 * time.Millisecond
 )
 
+var orchestrator string
+
+func init() {
+    flag.StringVar(&orchestrator, "orchestrator", "core",
+                   "Container orchestrator (\"core\" or \"docker\")")
+}
+
 func main() {
-    // Undo Alpine default umask 0022
-    // syscall.Umask(0000)
+    // Undo Alpine default umask 0022 when launching in docker
+    if orchestrator == "docker" {
+        syscall.Umask(0000)
+    }
 
     os.Chdir("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build")
 
@@ -35,6 +45,7 @@ func main() {
             MajorityRatio: 0.51,
         },
         ReconcileBcastInterval: 250 * time.Millisecond,
+        Orchestrator: orchestrator,
     }
 
 	node.NewNode(cfg, 8001, "./templates/keys.json")

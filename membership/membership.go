@@ -738,14 +738,12 @@ func (m *manager) updateMembershipList(mlist map[string]int64) (haveMore bool) {
 }
 
 func (m *manager) membershipBroadcastHandler() {
-   sub, _ := m.psub.Subscribe("next_membership")
-
+    sub, _ := m.psub.Subscribe("next_membership")
     for {
         got, _ := sub.Next(m.ctx)
         mlist := make(map[string]int64)
         json.Unmarshal(got.Data, &mlist)
         src, _ := peer.IDFromBytes(got.From)
-
         if src.String() != m.host.ID().String() {
             m.checkPeerTimeouts()
             nextMembershipListLock.Lock()

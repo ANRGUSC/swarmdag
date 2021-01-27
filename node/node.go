@@ -20,7 +20,7 @@ import (
 
 
 
-func getIPAddr() (addr string, addrEnd int) {
+func getIPAddr(log *logging.Logger) (addr string, addrEnd int) {
     //need a safer way to grab IP addr
     iface, err := net.InterfaceByName("eth0") // docker containers
     // iface, err := net.InterfaceByName("enp0s31f6") // CORE?
@@ -52,6 +52,7 @@ func getIPAddr() (addr string, addrEnd int) {
 type Config struct {
     Membership membership.Config
     ReconcileBcastInterval time.Duration
+    Orchestrator string
 }
 
 type Node struct {
@@ -62,13 +63,22 @@ type Node struct {
 
 func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     var gossipPrivKey crypto.PrivKey
-    gossipHost, addrEnd := getIPAddr()
-    nodeID := addrEnd - 1  // TODO: -1 for lxc, -2 for docker
+    var nodeID int
     log := logging.MustGetLogger("swarmdag")
     format := logging.MustStringFormatter(`%{level}:%{message}`)
     logging.SetBackend(logging.NewLogBackend(os.Stdout, "", 0))
     logging.SetLevel(logging.DEBUG, "swarmdag")
     logging.SetFormatter(format)
+    gossipHost, addrEnd := getIPAddr(log)
+
+    switch cfg.Orchestrator {
+    case "core":
+        nodeID = addrEnd - 1
+    case "docker":
+        nodeID = addrEnd - 2
+    default:
+        panic("NewNode(): invalid orchestrator")
+    }
 
     k, err := getPrivKey(keyfile, nodeID)
     if err != nil {
@@ -107,7 +117,7 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
         host,
         ctx,
     )
-    pmanager := partition.NewManager(nodeID, log, dag)
+    pmanager := partition.NewManager(nodeID, log, dag, cfg.Orchestrator)
     mmanager := membership.NewManager(cfg.Membership, pmanager, ctx, host, psub, log,
                                       libp2pIDs)
     n := &Node{
