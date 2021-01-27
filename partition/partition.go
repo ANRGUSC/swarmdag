@@ -33,13 +33,11 @@ const (
     ipPrefix = "192.168.10" // prefix for all containers
     tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
     abciAppAddr = "0.0.0.0:20000"
+    coreDir = "/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build"
+    dockerDir = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 )
 
-// CORE Emulator
-var rootDirStart = "/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build"
-
-// Docker
-// var rootDirStart = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
+var rootDirStart string
 
 type NetworkInfo struct {
     ViewID          int
@@ -94,8 +92,10 @@ func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG, orchestrator 
     switch orchestrator {
     case "core":
         offset = 1
+        rootDirStart = coreDir
     case "docker":
         offset = 2  // Bridge takes up x.x.x.1, start IP addrs at x.x.x.2
+        rootDirStart = dockerDir
     default:
         log.Critical("NewManager(): invalid orchestrator")
     }
