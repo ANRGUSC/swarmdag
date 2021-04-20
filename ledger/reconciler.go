@@ -13,10 +13,9 @@ import (
 )
 
 const (
-	topic = "reconcile"
 	repeatsRequired = 2
 	pullReqInterval = 500 * time.Millisecond
-	reconcilerTimeout = 10 * time.Second
+	reconcilerTimeout = 120 * time.Second
 	maxPullReqs = 5
 )
 
@@ -43,6 +42,8 @@ type pendingPull struct {
 }
 
 type reconciler struct {
+	topic *pubsub.Topic
+	pullTopics []*pubsub.Topic
 	amLeader bool
 	dag *DAG
 	peerRepeats	map[peer.ID]int
@@ -76,17 +77,20 @@ func (r *reconciler) ledgerBroadcast(ctx context.Context) {
 			r.bcastLock.Lock()
 			rMsg, _ := json.Marshal(createMsg(r.dag.ChainID(), r.dag.Idx))
 			r.bcastLock.Unlock()
-			r.dag.psub.Publish(topic, rMsg)
+			err := r.topic.Publish(ctx, rMsg)
+			if err != nil {
+				panic(err)
+			}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (r *reconciler) pullMsgHandler(ctx context.Context) {
+func (r *reconciler) pullMsgHandler(ctx context.Context, pullMsgCh chan *pubsub.Message) {
 	var rMsg reconcileMsg
-	msgCh := make(chan *pubsub.Message)
-	sub, _ := r.dag.psub.Subscribe("pull-" + r.dag.host.ID().String())
+	topic, _ := r.dag.psub.Join("pull-" + r.dag.host.ID().String())
+	sub, _ := topic.Subscribe()
 	pending := make(map[peer.ID]chan bool)
 
 	go func() {
@@ -116,6 +120,7 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 				}
 			}
 			for p := range r.newPullCh {p.doneCh <- true}
+			topic.Close()
 			return
 		case m, _ := <-msgCh:
 			json.Unmarshal(m.Data, &rMsg)
@@ -135,13 +140,16 @@ func (r *reconciler) pullMsgHandler(ctx context.Context) {
 					delete(pending, m.GetFrom())
 				}
 			case "pullReq":
-				r.log.Warning("rcvd pull request")
+				r.log.Warning("rcvd pull request from " + m.GetFrom()[len(m.GetFrom())-6:])
 				txs := r.dag.CompileTransactions(rMsg.NeededChains)
 				pullResp, _ := json.Marshal(reconcileMsg {
 					MsgType: "pullResp",
 					Transactions: txs,
 				})
-				r.dag.psub.Publish("pull-" + m.GetFrom().String(), pullResp)
+				err := r.dag.psub.Publish("pull-" + m.GetFrom().String(), pullResp)
+				if err != nil {
+					panic(err)
+				}
 			}
 		}
 	}
@@ -185,9 +193,12 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 	for {
 		select {
 		case <-pullReqTicker.C:
-			r.dag.psub.Publish("pull-" + srcID.String(), pullReq)
+			err := r.dag.psub.Publish("pull-" + srcID.String(), pullReq)
+			if err != nil {
+				panic(err)
+			}
 		case <-p.doneCh:
-			r.log.Info("done with pull req")
+			r.log.Info("done with pull req to " + srcID.String()[len(srcID.String())-6:])
 			return
 		}
 	}
@@ -195,14 +206,18 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg) {
 
 func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 	defer r.log.Debug("stop reconciler broadcasting")
-	sub, _ := r.dag.psub.Subscribe(topic)
+	sub, _ := r.topic.Subscribe()
+	defer sub.Cancel()
 	var lock sync.Mutex
+	msgCh := make(chan *pubsub.Message)
+	pending := make(map[peer.ID]chan bool)
 
 	// Record of pending pull requests by peer's ledger hash (not ID). This
 	// prevents sending a pull req to more than 1 node with the same ledger and
 	// sending concurrent pull requests to a single node.
 	pending := make(map[uint64]bool, maxPullReqs)
 	waitFor := make(map[peer.ID]bool)
+
 
 	var rMsg reconcileMsg
 	for {
@@ -212,10 +227,19 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 		}
 		srcID := m.ReceivedFrom
 		json.Unmarshal(m.Data, &rMsg)
-		if rMsg.MsgType == "finished" {
+		switch rMsg.MsgType {
+		case "finished":
 			// received finished from leader
 			r.alphaTxTime = rMsg.AlphaTxTime
 			return
+		case "pullReq":
+		case "bcast":
+			// proceed
+		default:
+			continue
+		}
+		if rMsg.MsgType == "finished" {
+
 		} else if rMsg.MsgType != "bcast" {
 			continue
 		}
@@ -223,8 +247,23 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 		r.prevChainIDs[rMsg.PrevChainID] = struct{}{}
 
 		lock.Lock()
+		for p, r := range r.peerRepeats {
+			matches := p.String()[len(p.String())-6:] == srcID.String()[len(srcID.String())-6:]
+			if r < 2 && matches {
+				fmt.Println("missing " + p.String()[len(p.String())-6:] + " src is " + srcID.String())
+			}
+		}
 		if (rMsg.LedgerHash == r.dag.Idx.HashLedger()) {
 			r.peerRepeats[srcID]++
+			if r.amLeader && r.peerRepeats[srcID] == 2 {
+				s := srcID.String()
+				r.log.Infof("**matching hash**: %s\n", s[len(s)-6:])
+				fmt.Printf("peer repeats: %v\n", r.peerRepeats)
+			} else if r.peerRepeats[srcID] == 2 {
+				s := srcID.String()
+				r.log.Infof("matching: %s\n", s[len(s)-6:])
+				fmt.Printf("peer repeats: %v\n", r.peerRepeats)
+			}
 		} else {
 			if len(pending) < maxPullReqs {
 				if _, exists := pending[rMsg.LedgerHash]; !exists {
@@ -268,8 +307,15 @@ func (r *reconciler) broadcastMsgHandler(ctx context.Context) {
 			r.alphaTxTime = time.Now().Unix()
 			fin.AlphaTxTime = r.alphaTxTime
 			f, _ := json.Marshal(fin)
-			r.dag.psub.Publish(topic, f)
-			r.dag.psub.Publish(topic, f)
+			err := r.topic.Publish(ctx, f)
+			if err != nil {
+				panic(err)
+			}
+			time.Sleep(200 * time.Millisecond)
+			err = r.topic.Publish(ctx, f)
+			if err != nil {
+				panic(err)
+			}
 			return
 		}
 	}
@@ -282,6 +328,31 @@ func timeout(ctx context.Context, cancel context.CancelFunc) {
 		cancel()
 	case <-ctx.Done():
 	}
+}
+
+func (r *reconciler) enableRelay(peerIDs []peer.ID) func() {
+	var rCancelFuncs []pubsub.RelayCancelFunc
+	var topics []*pubsub.Topic
+	for _, p := range peerIDs {
+		if p.String() != r.dag.host.ID().String() {
+			t, _ := r.dag.psub.Join("pull-" + p.String())
+			f, _ := t.Relay()
+			topics = append(topics, t)
+			rCancelFuncs = append(rCancelFuncs, f)
+		}
+	}
+	disableRelay := func() {
+		for _, f := range rCancelFuncs {
+			f()
+		}
+		for _, t := range topics {
+			err := t.Close()
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+	return disableRelay
 }
 
 // Reconciler assumes network events only include a simple split or a merger of
@@ -299,7 +370,14 @@ func Reconcile(
 		peerRepeats[id] = 0
 	}
 
+	topic, err := dag.psub.Join("reconcile")
+
+	if err != nil {
+		panic(err)
+	}
+
 	r := reconciler {
+		topic: topic,
 		amLeader: amLeader,
 		peerRepeats: peerRepeats,
 		dag: dag,
@@ -309,17 +387,25 @@ func Reconcile(
 	}
 	defer close(r.newPullCh)
 	r.prevChainIDs[r.dag.ChainID()] = struct{}{}
+	disableRelay := r.enableRelay(libp2pIDs)
 
 	ctx, cancel := context.WithCancel(dag.ctx)
 
+	pullMsgCh := make(chan *pubsub.Message)
 	timeoCtx, timeoCancel := context.WithCancel(ctx)
 	go r.ledgerBroadcast(timeoCtx)
-	go r.pullMsgHandler(timeoCtx)
+	go r.pullMsgHandler(timeoCtx, pullMsgCh)
 	go timeout(ctx, timeoCancel)
 	r.broadcastMsgHandler(timeoCtx)
 
 	cancel()
 	r.wg.Wait()
+	err = topic.Close()
+	if err != nil {
+		panic(err)
+	}
+	disableRelay()
+
 	log.Infof("Reconciler finished -- my ledger hash: %d\n", dag.Idx.HashLedger())
 
 	// TODO: if an error occurs, there may be MORE parents than 2.......

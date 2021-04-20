@@ -64,11 +64,13 @@ func TestDAGLedger(t *testing.T) {
 		t.Error("hash 'not_a_tx' should not exist")
 	}
 
-	t.Logf("chain0 tip: %s\n", dag.GetTip("chain0"))
-	t.Logf("chain0 alpha: %s\n", dag.getAlpha("chain0"))
-	t.Logf(
-		"chain1 tip and alpha (should be the same): %s %s\n",
-		dag.GetTip("chain1"),
-		dag.getAlpha("chain1"),
-	)
+	h, _ = dag.GetTip("chain0")
+	t.Logf("chain0 tip: %s\n", h)
+	h, _ = dag.getAlpha("chain0")
+	t.Logf("chain0 alpha: %s\n",h)
+	h1, _ := dag.GetTip("chain1")
+	h2, _ := dag.GetTip("chain1")
+	t.Logf("chain1 tip and alpha (should be the same): %s %s\n", h1, h2)
+	h, err := dag.GetTip("ShouldNotExist")
+	t.Log(err)
 }

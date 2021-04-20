@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"math/rand"
 	"sync"
+    "sort"
 
 	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -406,6 +407,8 @@ func (m *manager) leadProposal(ctx context.Context) {
 
                 // stop-gap for "membership_propose" topic to propagate
                 m.psub.Publish("membership_propose", installMsg)
+                time.Sleep(250 * time.Millisecond)
+                m.psub.Publish("membership_propose", installMsg)
                 m.log.Debug("installList: ", string(installMsg))
                 m.installMembershipView(installList, m.host.ID().String())
                 return
@@ -618,7 +621,7 @@ func (m *manager) proposeRoutine() {
                     leader = src.String()
                     m.state = FOLLOW_PROPOSER
                     followTimeo = time.NewTicker(m.conf.FollowerTimeout)
-                    m.log.Debugf("state FOLLOW_PROPOSER, leader: %s\n", src.String())
+                    m.log.Debugf("state FOLLOW_PROPOSER, leader: node %d\n", m.libp2pIDs[src])
                 }
                 // fixme: respond to out of sync node? (trying to propose lower viewID, etc)
             case FOLLOW_PROPOSER:
@@ -630,7 +633,6 @@ RESPOND_TO_PROPOSER:
                         nextMembershipListLock.RUnlock()
                         m.psub.Publish(src.String(), ackResp)
                         m.log.Warningf("ACKING LEADER VOTE TABLE\n")
-                        m.log.Warning(mlist)
                     }
                     if mlist["INSTALL_VIEW"] == 1 {
                         if _, exists := mlist[m.host.ID().String()]; exists {
@@ -796,7 +798,6 @@ func (m *manager) reconcileNeeded(currMembership, nextMembership map[string]int6
 
 func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
     nextMembershipListLock.Lock()
-    defer nextMembershipListLock.Unlock()
 
     for addr, _ := range m.membershipList {
         if isAddr(addr) {
@@ -851,6 +852,8 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
         amLeader = false
     }
 
+    nextMembershipListLock.Unlock()
+
     info := partition.NetworkInfo {
         ViewID: viewID,
         ChainID: m.membershipID,
@@ -862,14 +865,17 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
 
     err := m.partManager.NewNetwork(info)
     if err != nil {
+        nextMembershipListLock.Lock()
         // prepare internal state to redo membership update
         m.membershipList = make(map[string]int64)
         m.membershipList["VIEW_ID"] = int64(viewID - 1)
         m.viewID = viewID - 1
         m.nextMembershipList["VIEW_ID"] = int64(viewID)
         m.log.Info("Membership installation failed")
+        nextMembershipListLock.Unlock()
         return
     }
+    sort.IntSlice(memberNodeIDs).Sort()
     m.log.Debugf("************** INSTALLED VIEW %d **************", viewID)
     m.log.Debugf("member node IDs: %+v\n", memberNodeIDs)
     // monitor.ReportEventRequest("172.16.0.254:32001", "http://0.0.0.0:8086",

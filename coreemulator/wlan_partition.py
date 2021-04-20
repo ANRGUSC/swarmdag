@@ -12,12 +12,13 @@ import logging
 from pyroute2 import IPRoute
 import signal
 import os
+import net_events
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 SWARMDAG_PATH = '/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build'
-NUM_NODES = 4
+NUM_NODES = 8
 prefixes = IpPrefixes("192.168.10.0/24")
 session = CoreEmu().create_session()
 ip = IPRoute()  # for IP routes on host
@@ -62,9 +63,9 @@ def create_wlan(session, nodes, ifaces) -> WlanNode:
         {
             "range": "280",
             "bandwidth": "55000000",
-            "delay": "6000",
-            "jitter": "5",
-            "error": "5",
+            # "delay": "6000",
+            # "jitter": "5",
+            # "error": "5",
         },
     )
     for n, i in zip(nodes, ifaces):
@@ -164,25 +165,28 @@ session.set_state(EventTypes.CONFIGURATION_STATE)
 nodes, ifaces = create_nodes(session, NUM_NODES)
 wlan = create_wlan(session, nodes, ifaces)
 session.instantiate()
-time.sleep(3)
-exec_swarmdag(session, nodes)
 
-toggle = True
-while True:
-    # Note: If timeouts occur during the membership proposing process, then 20
-    # sec might not be long enough of a partition time.
-    time.sleep(10)
-    if toggle is True:
-        print("partitioned network")
-        wlan_link(nodes[0], nodes[2], wlan, unlink=True)
-        wlan_link(nodes[0], nodes[3], wlan, unlink=True)
-        wlan_link(nodes[1], nodes[2], wlan, unlink=True)
-        wlan_link(nodes[1], nodes[3], wlan, unlink=True)
-        toggle = False
-    else:
-        print("fully connected")
-        wlan_link(nodes[0], nodes[2], wlan)
-        wlan_link(nodes[0], nodes[3], wlan)
-        wlan_link(nodes[1], nodes[2], wlan)
-        wlan_link(nodes[1], nodes[3], wlan)
-        toggle = True
+watch_dir = os.path.join(SWARMDAG_PATH, "partition_done")
+
+try:
+    os.mkdir(watch_dir)
+except OSError as error:
+    print(error)
+
+for f in os.listdir(watch_dir):
+    print(f)
+    print(watch_dir)
+
+
+evt_gen = net_events.Generator(
+    split_rate=1 / 25,
+    merge_rate=1 / 15,
+    topology="fully_connected",
+    nodes=nodes,
+    wlan=wlan,
+    watch_dir=watch_dir,
+    log=log
+)
+
+exec_swarmdag(session, nodes)
+evt_gen.run()

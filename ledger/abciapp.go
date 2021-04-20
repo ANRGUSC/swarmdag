@@ -83,7 +83,6 @@ func (app *ABCIApp) CheckTx(req abcitypes.RequestCheckTx) abcitypes.ResponseChec
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 	if app.txEnabled == false {
-		app.log.Debug("CheckTx: Incoming transactions are currently disabled")
 		return abcitypes.ResponseCheckTx{Code: 23, GasWanted: 1}
 	}
 	if strings.HasPrefix(string(req.Tx), "{") {

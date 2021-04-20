@@ -157,7 +157,7 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
         headTxMembershipID = tx.MembershipID
     }
     if d.Search(tx.Hash) != nil {
-        d.log.Debugf("Tx %s already exists", tx.Hash)
+        // d.log.Debugf("Tx %s already exists", tx.Hash)
         return false
     }
     t := cayley.NewTransaction()
@@ -174,7 +174,7 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
 
     // catolog new tx
     d.Idx.InsertTxHash(tx.MembershipID, tx.Hash)
-    d.log.Infof("Inserted tx %s, parent %s, ledgerhash %d\n", tx.Hash[:6], tx.ParentHash0[:6], d.Idx.HashLedger())
+    // d.log.Infof("Inserted tx %s, parent %s, ledgerhash %d\n", tx.Hash[:6], tx.ParentHash0[:6], d.Idx.HashLedger())
     return true
 }
 
@@ -213,9 +213,11 @@ func (d *DAG) recursiveSearch(membershipID string, direction int) (string, error
     p := cayley.StartPath(d.DB, quad.String(membershipID)).
         In(quad.String("membershipID"))
     tx, err := p.Iterate(nil).FirstValue(nil)
-    if err != nil {
-        return "", errors.New("Error: recursiveSearch() no Tx for chain" + membershipID)
+    if err != nil || tx == nil {
+        panic("error no Tx for chain " + membershipID)
+        return "", errors.New("Error: recursiveSearch() no Tx for chain " + membershipID)
     }
+    d.log.Warningf("tx is: %v, %v\n", tx, err)
     txHash := strings.Trim(tx.String(), "\"")
     if direction == 1 {
         p = path.StartPath(d.DB, quad.String(txHash)).

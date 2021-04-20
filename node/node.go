@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"context"
 	"time"
+    "strconv"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -100,7 +101,10 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
         libp2p.Identity(gossipPrivKey),
   	)
 
-    psub, err := pubsub.NewGossipSub(ctx, host)
+    qSizeOpt := pubsub.WithPeerOutboundQueueSize(128)
+    jsonTracer, _ := pubsub.NewJSONTracer("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build/" + strconv.Itoa(nodeID) + ".log")
+    traceOpt := pubsub.WithEventTracer(jsonTracer)
+    psub, err := pubsub.NewGossipSub(ctx, host, qSizeOpt, traceOpt)
 
     log.Infof("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n",
     		  gossipHost, gossipPort, host.ID().Pretty())

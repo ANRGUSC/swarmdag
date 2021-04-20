@@ -7,6 +7,7 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+    "strconv"
 	"time"
 
 	cfg "github.com/tendermint/tendermint/config"
@@ -34,10 +35,10 @@ const (
     tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
     abciAppAddr = "0.0.0.0:20000"
     coreDir = "/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build"
-    dockerDir = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 )
 
 var rootDirStart string
+var dockerDir = os.ExpandEnv("$GOPATH/src/github.com/ANRGUSC/swarmdag/build")
 
 type NetworkInfo struct {
     ViewID          int
@@ -86,6 +87,21 @@ func (n *Node) Close() {
     }
 }
 
+func (m *manager) createDoneFile(nodeIDs []int) {
+    p := filepath.Join(coreDir, "partition_done", strconv.Itoa(m.nodeID) + ".done")
+    os.MkdirAll(filepath.Dir(p), 0755)
+    f, _ := os.OpenFile(
+        p,
+        os.O_CREATE|os.O_RDWR,
+        0766,
+    )
+    for _, i := range nodeIDs {
+        f.WriteString(strconv.Itoa(i))
+        f.Write([]byte("\n"))
+    }
+    f.Close()
+}
+
 
 func NewManager (nodeID int, log *logging.Logger, dag *ledger.DAG, orchestrator string) Manager {
     var offset int
@@ -127,6 +143,7 @@ func (m *manager) NewNetwork(info NetworkInfo) error {
     if len(info.Libp2pIDs) == 1 {
         m.stopOldNetworks()
         m.log.Info("partition: lone node, not creating new network")
+        m.createDoneFile([]int{m.nodeID})
         return nil
     }
 
@@ -163,6 +180,7 @@ func (m *manager) NewNetwork(info NetworkInfo) error {
         m.log.Fatalf("error starting new tendermint net: %v", err)
     }
 
+    m.createDoneFile(info.MemberNodeIDs)
     node.Start()
     m.instances[node] = server
     return nil
@@ -253,9 +271,10 @@ func (m *manager) newTendermint(
         )
         for {
             if _, err := os.Stat(genesisFile); os.IsNotExist(err) {
+                // Wait for up to 2 minutes
                 time.Sleep(500 * time.Millisecond)
                 retries += 1
-                if retries > 30 {
+                if retries > 240 {
                     panic("Directories not created by leader, exiting...")
                 }
             } else {

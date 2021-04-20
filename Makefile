@@ -1,4 +1,5 @@
 TENDERMINT_VER=0.33.5
+NUM_NODES=8
 
 # TODO: cleanup cayleygraph db instances, clean up partition information.
 
@@ -12,8 +13,8 @@ TENDERMINT_VER=0.33.5
 gen-keys:
 	@if [ -d .build/templates ]; then rm -rf ./build/templates/node*; fi
 	@if [ ! -d ./build/templates/ ]; then mkdir -p ./build/templates; fi
-	./build/tendermint testnet --v 4 --o ./build/templates
-	go run tools/keygen.go -n 4 -o ./build/templates/
+	./build/tendermint testnet --v ${NUM_NODES} --o ./build/templates
+	go run tools/keygen.go -n ${NUM_NODES} -o ./build/templates/
 .PHONY: gen-keys
 
 get-tendermint:
@@ -61,6 +62,8 @@ run: stop build rm_tmp local
 
 full: build rm_tmp rm_logs
 	sudo core-cleanup
+	tmux kill-server | true
+	bash t.sh
 	cd coreemulator; sudo core-python wlan_partition.py
 .PHONY: full
 

@@ -35,7 +35,7 @@ func main() {
     cfg := &node.Config{
         Membership: membership.Config{
             NodeID: -1, // TODO: wht to do with this?
-            BroadcastPeriod: 250 * time.Millisecond,
+            BroadcastPeriod: 300 * time.Millisecond,
             ProposeHeartbeatInterval: 200 * time.Millisecond,
             ProposeTimerMin: 1, //todo
             ProposeTimerMax: 3,
@@ -44,7 +44,7 @@ func main() {
             FollowerTimeout: 2 * time.Second, // needs to be greater than ProposeHeartbeatInterval
             MajorityRatio: 0.51,
         },
-        ReconcileBcastInterval: 250 * time.Millisecond,
+        ReconcileBcastInterval: 400 * time.Millisecond,
         Orchestrator: orchestrator,
     }
 
