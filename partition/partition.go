@@ -35,6 +35,8 @@ const (
     tmLogLevel = "main:info,state:info,*:error" // tendermint/abci log level
     abciAppAddr = "0.0.0.0:20000"
     coreDir = "/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build"
+    folderPollInterval = 500 * time.Millisecond
+    folderPollRetries = 480 // 480 * 500ms is 4 min
 )
 
 var rootDirStart string
@@ -272,9 +274,9 @@ func (m *manager) newTendermint(
         for {
             if _, err := os.Stat(genesisFile); os.IsNotExist(err) {
                 // Wait for up to 2 minutes
-                time.Sleep(500 * time.Millisecond)
+                time.Sleep(folderPollInterval)
                 retries += 1
-                if retries > 240 {
+                if retries > folderPollRetries {
                     panic("Directories not created by leader, exiting...")
                 }
             } else {

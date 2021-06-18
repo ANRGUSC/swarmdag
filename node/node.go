@@ -66,7 +66,7 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     var gossipPrivKey crypto.PrivKey
     var nodeID int
     log := logging.MustGetLogger("swarmdag")
-    format := logging.MustStringFormatter(`%{level}:%{message}`)
+    format := logging.MustStringFormatter(`%{level}:%{shortfile}:%{message}`)
     logging.SetBackend(logging.NewLogBackend(os.Stdout, "", 0))
     logging.SetLevel(logging.DEBUG, "swarmdag")
     logging.SetFormatter(format)
@@ -101,10 +101,12 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
         libp2p.Identity(gossipPrivKey),
   	)
 
-    qSizeOpt := pubsub.WithPeerOutboundQueueSize(128)
+    qSizeOpt := pubsub.WithPeerOutboundQueueSize(256)
     jsonTracer, _ := pubsub.NewJSONTracer("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build/" + strconv.Itoa(nodeID) + ".log")
     traceOpt := pubsub.WithEventTracer(jsonTracer)
-    psub, err := pubsub.NewGossipSub(ctx, host, qSizeOpt, traceOpt)
+    // pExOpt := pubsub.WithPeerExchange(true)
+    floodOpt := pubsub.WithFloodPublish(true)
+    psub, err := pubsub.NewGossipSub(ctx, host, traceOpt, qSizeOpt, floodOpt)
 
     log.Infof("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n",
     		  gossipHost, gossipPort, host.ID().Pretty())

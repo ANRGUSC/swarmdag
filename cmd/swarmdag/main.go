@@ -14,7 +14,7 @@ import (
 )
 
 const (
-    txInterval = 200 * time.Millisecond
+    txInterval = 3 * time.Millisecond
 )
 
 var orchestrator string
@@ -44,7 +44,7 @@ func main() {
             FollowerTimeout: 2 * time.Second, // needs to be greater than ProposeHeartbeatInterval
             MajorityRatio: 0.51,
         },
-        ReconcileBcastInterval: 400 * time.Millisecond,
+        ReconcileBcastInterval: 500 * time.Millisecond,
         Orchestrator: orchestrator,
     }
 

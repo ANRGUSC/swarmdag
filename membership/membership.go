@@ -16,6 +16,7 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/partition"
+    "golang.org/x/sync/semaphore"
 )
 
 var isLeader bool = false
@@ -78,6 +79,7 @@ type manager struct {
 }
 
 type directMsg struct {
+    Destination string      `json:"Destination"`
     MsgType string          `json:"MsgType"`
     InstallView int64       `json:"INSTALL_VIEW"`
     ConfirmedLeader int64   `json:"CONFIRMED_LEADER"`
@@ -186,9 +188,9 @@ func (m *manager) Start() {
     m.membershipList[m.host.ID().String()] = time.Now().UnixNano()
     m.membershipList["VIEW_ID"] = int64(m.viewID)
     m.nextMembershipList["VIEW_ID"] = int64(m.viewID + 1)
-    m.notif.ConnectedF = func(n network.Network, c network.Conn) {
-            m.log.Debug("NOTIFIEE CONNECTED", c.RemoteMultiaddr().String())
-    }
+    // m.notif.ConnectedF = func(n network.Network, c network.Conn) {
+    //         m.log.Debug("NOTIFIEE CONNECTED", c.RemoteMultiaddr().String())
+    // }
     m.notif.DisconnectedF = func(n network.Network, c network.Conn) {
         m.log.Debug("disconnected from node", m.libp2pIDs[c.RemotePeer()])
     }
@@ -306,7 +308,7 @@ func (m *manager) voteTableBroadcast(
 func (m *manager) directMsgDispatcher() {
     var leadCh chan *pubsub.Message
     msgCh := make(chan *pubsub.Message)
-    sub, _ := m.psub.Subscribe(m.host.ID().String())
+    sub, _ := m.psub.Subscribe("directMsg")
 
     go func() {
         for {
@@ -355,6 +357,8 @@ func (m *manager) leadProposal(ctx context.Context) {
         m.proposeRoutineCh <- "RESET"
         m.leadingProposalCh <- nil
     } ()
+
+    proposeHeartbeat := time.NewTicker(m.conf.ProposeHeartbeatInterval)
 
     //initiate empty table
     nextMembershipListLock.RLock()
@@ -409,7 +413,7 @@ func (m *manager) leadProposal(ctx context.Context) {
                 m.psub.Publish("membership_propose", installMsg)
                 time.Sleep(250 * time.Millisecond)
                 m.psub.Publish("membership_propose", installMsg)
-                m.log.Debug("installList: ", string(installMsg))
+                cancelVote() // force vote cancel to reduce spam
                 m.installMembershipView(installList, m.host.ID().String())
                 return
             }
@@ -418,11 +422,20 @@ func (m *manager) leadProposal(ctx context.Context) {
         select {
         case <-ctx.Done():
             return
+        case <-proposeHeartbeat.C:
+            m.checkPeerTimeouts()
+            nextMembershipListLock.RLock()
+            nmlist, _ := json.Marshal(m.nextMembershipList)
+            m.psub.Publish("membership_propose", nmlist)
+            nextMembershipListLock.RUnlock()
         case <-leadProposalTimeout.C:
             m.log.Debug("LEADER TIMEOUT")
             return
         case dm := <-dmCh:
             msg := parseDirectMsg(dm.Data)
+            if msg.Destination != m.host.ID().String() {
+                continue
+            }
             src, _ := peer.IDFromBytes(dm.From)
 
             switch msg.MsgType {
@@ -507,11 +520,13 @@ func (m *manager) membershipChanged() bool {
     return false
 }
 
-func createAck(mlist map[string]int64) map[string]interface{} {
-    ack := make(map[string]interface{}, len(mlist) + 1)
-    ack["MsgType"] = "ackResp"
-    for k, v := range mlist {
-        ack[k] = v
+func createAck(mlist map[string]int64, dest string) directMsg {
+    var ack directMsg
+    ack.MsgType = "ackResp"
+    ack.List = make(map[string]int64, len(mlist))
+    ack.Destination = dest
+    for addr, ts := range mlist {
+        ack.List[addr] = ts
     }
     return ack
 }
@@ -521,12 +536,11 @@ func createAck(mlist map[string]int64) map[string]interface{} {
 func (m *manager) proposeRoutine() {
     proposeSub, _ := m.psub.Subscribe("membership_propose")
     rand.Seed(time.Now().UnixNano())
-    rcvdMsg := make(chan bool)
-    nextMsg := make(chan bool)
+    rcvdMsg := make(chan map[string]int64)
     var src peer.ID
     var leader string
-    mlist := make(map[string]int64)
-    nack := directMsg{MsgType: "nackResp"}
+    busySem := semaphore.NewWeighted(1)
+    nack := directMsg{MsgType: "nackResp", Destination: ""}
 
     //sleep min time plus a random value up to the max at 100ms resolution
     interval := (m.conf.ProposeTimerMax - m.conf.ProposeTimerMin) * 1000 / 100
@@ -535,22 +549,20 @@ func (m *manager) proposeRoutine() {
     proposeTicker := time.NewTicker(tickerTime)
 
     // init timers
-    proposeHeartbeat := time.NewTicker(10 * time.Second)
     followTimeo := time.NewTicker(1)
-    proposeHeartbeat.Stop()
     followTimeo.Stop()
 
 
     go func(){
         for {
             got, _ := proposeSub.Next(m.ctx)
-            mlist = make(map[string]int64)
+            mlist := make(map[string]int64)
             json.Unmarshal(got.Data, &mlist)
             src, _ = peer.IDFromBytes(got.From)
 
-            if src != m.host.ID() {
-                rcvdMsg <- true
-                <-nextMsg
+            if src != m.host.ID() && busySem.TryAcquire(1) {
+                rcvdMsg <- mlist
+                busySem.Release(1)
             }
         }
     }()
@@ -572,16 +584,9 @@ func (m *manager) proposeRoutine() {
                 nextMembershipListLock.Unlock()
                 leadCtx, leadCancel = context.WithCancel(m.ctx)
                 go m.leadProposal(leadCtx)
-                proposeHeartbeat = time.NewTicker(m.conf.ProposeHeartbeatInterval)
             }
-        case <-proposeHeartbeat.C:
-            m.checkPeerTimeouts()
-            nextMembershipListLock.RLock()
-            nmlist, _ := json.Marshal(m.nextMembershipList)
-            m.psub.Publish("membership_propose", nmlist)
-            nextMembershipListLock.RUnlock()
 
-        case <-rcvdMsg:
+        case mlist := <-rcvdMsg:
             switch m.state {
             case LEAD_PROPOSAL:
                 if mlist["CONFIRMED_LEADER"] == 1 {
@@ -591,23 +596,25 @@ func (m *manager) proposeRoutine() {
 
                 // another leader asking to install view
                 if mlist["INSTALL_VIEW"] == 1 && mlist["VIEW_ID"] > int64(m.viewID) {
+                    leadCancel()
                     if mlist[m.host.ID().String()] > 0 {
                         if m.updateMembershipList(mlist) {
                             m.log.Error("ERR: leader said to install but I have more nodes!")
                         }
-                        m.log.Debug("state FOLLOW_ANY")
                         m.state = FOLLOW_ANY
+                        busySem.Acquire(context.TODO(), 1)
                         m.installMembershipView(mlist, src.String())
+                        busySem.Release(1)
+                        m.proposeRoutineCh <- "RESET"
                     }
-                    leadCancel()
-                    m.proposeRoutineCh <- "RESET"
                     break
                 }
 
                 // I'm leading, nack anyone else
                 if mlist["PROPOSE"] == 1 {
+                    nack.Destination = src.String()
                     nackResp, _ := json.Marshal(nack)
-                    m.psub.Publish(src.String(), nackResp)
+                    m.psub.Publish("directMsg", nackResp)
                 }
             case FOLLOW_ANY:
                 if mlist["PROPOSE"] == 1 && int64(mlist["VIEW_ID"]) > m.membershipList["VIEW_ID"] {
@@ -615,9 +622,9 @@ func (m *manager) proposeRoutine() {
                     m.log.Debug("ACKing proposal for membership update to node", m.libp2pIDs[src])
                     m.updateMembershipList(mlist)
                     nextMembershipListLock.RLock()
-                    ackResp, _ := json.Marshal(createAck(m.nextMembershipList))
+                    ackResp, _ := json.Marshal(createAck(m.nextMembershipList, src.String()))
                     nextMembershipListLock.RUnlock()
-                    m.psub.Publish(src.String(), ackResp)
+                    m.psub.Publish("directMsg", ackResp)
                     leader = src.String()
                     m.state = FOLLOW_PROPOSER
                     followTimeo = time.NewTicker(m.conf.FollowerTimeout)
@@ -629,9 +636,9 @@ RESPOND_TO_PROPOSER:
                 if src.String() == leader && mlist["VIEW_ID"] > int64(m.viewID) {
                     if mlist["VOTE_TABLE"] == 1 && mlist[m.host.ID().String()] < 1 {
                         nextMembershipListLock.RLock()
-                        ackResp, _ := json.Marshal(createAck(m.nextMembershipList))
+                        ackResp, _ := json.Marshal(createAck(m.nextMembershipList, src.String()))
                         nextMembershipListLock.RUnlock()
-                        m.psub.Publish(src.String(), ackResp)
+                        m.psub.Publish("directMsg", ackResp)
                         m.log.Warningf("ACKING LEADER VOTE TABLE\n")
                     }
                     if mlist["INSTALL_VIEW"] == 1 {
@@ -639,20 +646,21 @@ RESPOND_TO_PROPOSER:
                             if m.updateMembershipList(mlist) {
                                 m.log.Error("ERR: have more in mlist than leader")
                             }
-                            m.log.Debug("state FOLLOW_ANY")
                             m.state = FOLLOW_ANY
                             followTimeo.Stop()
-                            m.installMembershipView(mlist, leader)
                             m.proposeRoutineCh <- "RESET"
+                            busySem.Acquire(context.TODO(), 1)
+                            m.installMembershipView(mlist, leader)
+                            busySem.Release(1)
                             break
                         }
                     }
                     if mlist["PROPOSE"] == 1 {
                         if m.updateMembershipList(mlist) {
                             nextMembershipListLock.RLock()
-                            ackResp, _ := json.Marshal(createAck(m.nextMembershipList))
+                            ackResp, _ := json.Marshal(createAck(m.nextMembershipList, src.String()))
                             nextMembershipListLock.RUnlock()
-                            m.psub.Publish(src.String(), ackResp)
+                            m.psub.Publish("directMsg", ackResp)
                         }
                     } else if mlist["PROPOSE"] == -1 {
                         m.log.Debug("leader cancelled")
@@ -671,12 +679,12 @@ RESPOND_TO_PROPOSER:
                     //already responded to a leader, NACK any other proposals
                     if mlist["PROPOSE"] == 1 {
                         m.log.Warning("sent nack, already following someone")
+                        nack.Destination = src.String()
                         nackResp, _ := json.Marshal(nack)
-                        m.psub.Publish(src.String(), nackResp)
+                        m.psub.Publish("directMsg", nackResp)
                     }
                 }
             } // switch, <-rcvdMsg
-            nextMsg <- true
         case <-followTimeo.C:
             m.log.Debug("FOLLOW_PROPOSER timeout!")
             m.state = FOLLOW_ANY
@@ -689,7 +697,6 @@ RESPOND_TO_PROPOSER:
                 m.log.Debug("Resetting proposeRoutine()...")
                 m.log.Debug("state FOLLOW_ANY")
                 m.state = FOLLOW_ANY
-                proposeHeartbeat.Stop()
                 nextMembershipListLock.Lock()
                 delete(m.nextMembershipList, "CONFIRMED_LEADER") //just in case
                 delete(m.nextMembershipList, "PROPOSE")

@@ -54,7 +54,7 @@ func (app *ABCIApp) DeliverTx(req abcitypes.RequestDeliverTx) abcitypes.Response
 		a non-zero status code in the ResponseCheckTx struct"
 	*/
 	if app.txEnabled == false {
-		app.log.Debug("DeliverTx: Incoming transactions are currently disabled")
+		// app.log.Debug("DeliverTx: Incoming transactions are currently disabled")
 		return abcitypes.ResponseDeliverTx{Code: 23}
 	}
 

@@ -179,8 +179,8 @@ for f in os.listdir(watch_dir):
 
 
 evt_gen = net_events.Generator(
-    split_rate=1 / 25,
-    merge_rate=1 / 15,
+    split_rate=1 / 15,
+    merge_rate=1 / 10,
     topology="fully_connected",
     nodes=nodes,
     wlan=wlan,

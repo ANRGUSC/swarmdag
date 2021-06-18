@@ -54,6 +54,7 @@ var (
     headTxMembershipID string
     timeLockLen = 3
     timeLockMtx = &sync.Mutex{}
+    dbLock = &sync.Mutex{} // cayleygraph api with boltDB is not thread safe
 )
 
 func NewDAG(
@@ -140,6 +141,8 @@ func (d *DAG) TruncateTimeLock() {
 }
 
 func (d *DAG) InsertTx (tx *Transaction) bool {
+    dbLock.Lock()
+    defer dbLock.Unlock()
     headTxLock.Lock()
     defer headTxLock.Unlock()
     if tx.ParentHash0 == "" {
@@ -361,6 +364,8 @@ func (d *DAG) createAlphaTx(
 }
 
 func (d *DAG) CompileTransactions(chainIDs []string) []Transaction {
+    dbLock.Lock()
+    defer dbLock.Unlock()
     var txs []Transaction
     for _, chain := range chainIDs {
         p := cayley.StartPath(d.DB).Tag("hash").
