@@ -1,0 +1,50 @@
+[
+    {
+        "name": "node0",
+        "privKey": "CAESQEcuSrw4RyCKjD775AkC0ZUezQjToBlDtxqHncYGIQskWPKQJ5wzGFJRxwRZLF23WjBClhaCup+64UNMA7uURFc=",
+        "pubKey": "CAESIFjykCecMxhSUccEWSxdt1owQpYWgrqfuuFDTAO7lERX",
+        "libp2pID": "12D3KooWFoaa2amQMtavZavVrDSYQcP75zoUJ7N4ACFLo2qvDqPk"
+    },
+    {
+        "name": "node1",
+        "privKey": "CAESQFkOCjTXU+sy+LHmcXYn5Ut+Q3rQOBv9LHcKRb2HmEqTyin4I7yB6nMOBSAYkYLDp+ZQ9RdDZspAAbHmatSQ1K4=",
+        "pubKey": "CAESIMop+CO8gepzDgUgGJGCw6fmUPUXQ2bKQAGx5mrUkNSu",
+        "libp2pID": "12D3KooWPRXeAeZrwrDEFx7tnG1b6NDi88o6CZYs1qbdVAujVsbs"
+    },
+    {
+        "name": "node2",
+        "privKey": "CAESQLeBcZ0U+1vrci96o44wEofPN+57twCMZvzl7cKcYIZRFe4XIunA8yiaQh+LeFWPgFrXZp7AwY9dC0C+xD9womg=",
+        "pubKey": "CAESIBXuFyLpwPMomkIfi3hVj4Ba12aewMGPXQtAvsQ/cKJo",
+        "libp2pID": "12D3KooWBHyJHQymiQYE1zA89Qc1Dz6gAcyJDrrfrf9UXBu7smzX"
+    },
+    {
+        "name": "node3",
+        "privKey": "CAESQD39DXMcLCOpH8Z8QGE5Nk17q7VKkbuGtm+KWjcu2wW1maGgXGTMBMRzoiWgcL7GKSvjJM/5alldMQPzSucJyUg=",
+        "pubKey": "CAESIJmhoFxkzATEc6IloHC+xikr4yTP+WpZXTED80rnCclI",
+        "libp2pID": "12D3KooWLA5VMtPqEpHpBJa5nhnpshUXNkac6HadsY6gQZks1Jwh"
+    },
+    {
+        "name": "node4",
+        "privKey": "CAESQIuuJwuvW5JI/KjexHAsvP9aiJyw0x+qice/CS7JQew+aBGRgPTRTgUh2LYxdyRrLP3bu9BIDUSbSKhaYaNvieY=",
+        "pubKey": "CAESIGgRkYD00U4FIdi2MXckayz927vQSA1Em0ioWmGjb4nm",
+        "libp2pID": "12D3KooWGpc79zFjHaEqf3jCw7UbR6qJGMXvsL4GyqpwAfChr5Fb"
+    },
+    {
+        "name": "node5",
+        "privKey": "CAESQFPxdCUS1zgx5rXpcn3nSaRw7Az0WtRvjSnhDhyeLY0zu2dt2Tsh20tjMBODF14A6xqnMXKcK9SISBUZRcG1k7E=",
+        "pubKey": "CAESILtnbdk7IdtLYzATgxdeAOsapzFynCvUiEgVGUXBtZOx",
+        "libp2pID": "12D3KooWNRut5eY6jaZvW7eDoZ5onsevoH6Ve4Rwpocpq3JfqALY"
+    },
+    {
+        "name": "node6",
+        "privKey": "CAESQKnfzo00d6mZeHcfoF1K80Sy5prdeJe+8vuUxwO32dfbjGLtkIgyhbcazIwBYHxeTUfVNvpfjz9rLrQbwgEn19s=",
+        "pubKey": "CAESIIxi7ZCIMoW3GsyMAWB8Xk1H1Tb6X48/ay60G8IBJ9fb",
+        "libp2pID": "12D3KooWKGNjowpwGdLcSBUAfL6aievNmFV9h2ajiqTYoF6TA3z2"
+    },
+    {
+        "name": "node7",
+        "privKey": "CAESQHYT3Le0OOgKqxOuX8hyyTsRTtO1xHVyKbbuVzS2nzXEgzMtnw4MbRC0G4K/zWWbyGaOSEUeaKVQ/pxm4GU8akU=",
+        "pubKey": "CAESIIMzLZ8ODG0QtBuCv81lm8hmjkhFHmilUP6cZuBlPGpF",
+        "libp2pID": "12D3KooWJeWqeH31XGHCjgb8cWVQ3HcgPUyT4kPpmAFzjfpn4q72"
+    }
+]
