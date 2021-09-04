@@ -7,7 +7,7 @@ import (
 )
 
 type Index interface {
-	InsertTxHash(chainID string, txHash string)
+	InsertTxHash(chainID string, txHash string) bool
 	HashSortedChainIDs() uint64
 	ChainCount() int
 	CompileChainInfo() map[string]txInfo
@@ -63,13 +63,13 @@ func (idx *index) insertChainID(id string) {
 }
 
 // Returns false if transaction already exists.
-func (idx *index) InsertTxHash(chainID, txHash string) {
+func (idx *index) InsertTxHash(chainID, txHash string) bool {
 	idx.lock.Lock()
 	defer idx.lock.Unlock()
 	idx.insertChainID(chainID)
 	i := sort.SearchStrings(idx.LedgerMap[chainID], txHash)
 	if i < len(idx.LedgerMap[chainID]) && idx.LedgerMap[chainID][i] == txHash {
-		return
+		return false
 	}
 	idx.LedgerMap[chainID] = append(idx.LedgerMap[chainID], "")
 	if i < len(idx.LedgerMap[chainID]) - 1 {
@@ -77,6 +77,7 @@ func (idx *index) InsertTxHash(chainID, txHash string) {
 	}
 	idx.LedgerMap[chainID][i] = txHash
 	idx.txCount++
+	return true
 }
 
 func (idx *index) HashSortedChainIDs() uint64 {

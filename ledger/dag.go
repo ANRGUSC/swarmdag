@@ -176,8 +176,9 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
     }
 
     // catolog new tx
-    d.Idx.InsertTxHash(tx.MembershipID, tx.Hash)
-    // d.log.Infof("Inserted tx %s, parent %s, ledgerhash %d\n", tx.Hash[:6], tx.ParentHash0[:6], d.Idx.HashLedger())
+    if d.Idx.InsertTxHash(tx.MembershipID, tx.Hash) {
+        d.log.Infof("Inserted tx %s, unix_time (us): %d\n", tx.Hash[:6], time.Now().Unix())
+    }
     return true
 }
 

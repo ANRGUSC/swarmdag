@@ -38,18 +38,12 @@ type reconcileMsg struct {
 	Nonce	int							`json:"Nonce,omitempty"`
 }
 
-type pendingPull struct {
-	peer	peer.ID
-	doneCh	chan bool
-}
-
 type reconciler struct {
 	topic *pubsub.Topic
 	amLeader bool
 	dag *DAG
 	peerRepeats	map[peer.ID]int
 	log *logging.Logger
-	newPullCh chan pendingPull
 	prevChainIDs map[string]struct{}
 	alphaTxTime int64
 	wg sync.WaitGroup
@@ -94,7 +88,7 @@ func (r *reconciler) ledgerBroadcast(ctx context.Context) {
 	}
 }
 
-func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg, ctx context.Context) {
+func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg, doneCh chan bool, ctx context.Context) {
 	var neededChains []string
 	myChainInfo := r.dag.Idx.CompileChainInfo()
 
@@ -115,13 +109,7 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg, ctx context.C
 
 	r.log.Infof("sending pull req to %s\n", srcID.String())
 	r.log.Infof("my hash: %d, their hash: %d\n", r.dag.Idx.HashLedger(), rMsg.LedgerHash)
-	p := pendingPull{srcID, make(chan bool, 1)}
-	select {
-		case r.newPullCh <- p:
-		default:
-			r.log.Info("timed out or something went wrong")
-			return // reconciler timed out
-	}
+
 	pullReq, _ := json.Marshal(
 		reconcileMsg {
 			MsgType: "pullReq",
@@ -138,7 +126,7 @@ func (r *reconciler) sendPullReq(srcID peer.ID,	rMsg reconcileMsg, ctx context.C
 				panic(err)
 			}
 			r.bcastLock.Unlock()
-		case <-p.doneCh:
+		case <-doneCh:
 			return
 		}
 	}
@@ -164,40 +152,18 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 	var lock sync.Mutex
 	pendingPullsSent := make(map[peer.ID]chan bool)
 	reconcileInProg := make(map[peer.ID]bool)
-	pullForHash := make(map[uint64]bool)
 	var pendingLock sync.Mutex
 
 	go func() {
-		for {
+		<-ctx.Done()
+		pendingLock.Lock()
+		for _, done := range pendingPullsSent {
 			select {
-			case p := <-r.newPullCh:
-				pendingLock.Lock()
-				if _, exists := pendingPullsSent[p.peer]; exists {
-					p.doneCh <- true
-				} else {
-					pendingPullsSent[p.peer] = p.doneCh
-				}
-				pendingLock.Unlock()
-			case <-ctx.Done():
-				pendingLock.Lock()
-				for _, done := range pendingPullsSent {
-					select {
-					case done <- true:
-					default:
-					}
-				}
-				r.log.Info("unlock")
-				// for p := range r.newPullCh {
-				// 	select {
-				// 	case p.doneCh <- true:
-				// 	default:
-				// 	}
-				// }
-				r.log.Info("unlock2")
-				pendingLock.Unlock()
-				return
+			case done <- true:
+			default:
 			}
 		}
+		pendingLock.Unlock()
 	} ()
 
 	var rMsg reconcileMsg
@@ -254,14 +220,14 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 					pendingLock.Lock()
 					select {
 					case pendingPullsSent[src] <- true:
-						delete(pendingPullsSent, src)
+						//shuts down sendPullReq routine
 					default:
-						r.log.Warningf("missing pendingpullsent entry?")
+						r.log.Errorf("missing pendingpullsent entry?")
 					}
 					pendingLock.Unlock()
 
 					r.bcastLock.Lock()
-					r.log.Warningf("PROCESSING %s", srcID.String())
+					r.log.Warningf("PROCESSING %s", srcID.String()[len(srcID.String())-6:])
 					if lh != r.dag.Idx.HashLedger() {
 						r.timeo.Reset(reconcilerTimeout)
 						for _, tx := range txList {
@@ -269,12 +235,15 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 						}
 					}
 					r.log.Info("DONE with", srcID.String())
-					r.bcastLock.Unlock()
 
 					pendingLock.Lock()
 					delete(reconcileInProg, src)
-					r.log.Warningf("pending pulls: %+v", len(pendingPullsSent))
+					delete(pendingPullsSent, src)
+					r.log.Warningf("pending pulls: %+v", len(reconcileInProg))
 					pendingLock.Unlock()
+
+					r.bcastLock.Unlock()
+
 				}
 				r.wg.Done()
 			} (m.GetFrom(), txCopy, rMsg.LedgerHash)
@@ -282,7 +251,6 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 		case "bcast":
 			// pass
 		default:
-			fmt.Println("TODO: unrecognized message, removeme")
 			continue // unrecognized message
 		}
 
@@ -297,18 +265,18 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 		if (rMsg.LedgerHash == r.dag.Idx.HashLedger()) {
 			r.peerRepeats[srcID]++
 			if r.amLeader && r.peerRepeats[srcID] == 2 {
-				r.log.Warningf("MISSING: ")
+				r.log.Warningf("LEADER MISSING: ")
 				for p, repeats := range r.peerRepeats {
 					if repeats < 2 {
-						fmt.Printf("%s ", p.String())
+						fmt.Printf("%s ", p.String()[len(p.String())-6:])
 					}
 				}
 				fmt.Printf("\n")
 			} else if r.peerRepeats[srcID] == 2 {
-				r.log.Warningf("follower missing: ")
+				r.log.Warningf("FOLLOWER MISSING: ")
 				for p, repeats := range r.peerRepeats {
 					if repeats < 2 {
-						fmt.Printf("%s ", p.String())
+						fmt.Printf("%s, ", p.String()[len(p.String())-6:])
 					}
 				}
 				fmt.Printf("\n")
@@ -316,21 +284,23 @@ func (r *reconciler) messageHandler(ctx context.Context) {
 
 
 		} else {
-			r.peerRepeats[srcID] = 0
 			pendingLock.Lock()
+			if rMsg.LedgerHash == r.dag.Idx.HashLedger() {
+				//invalidated by a processed pullResp while waiting for lock
+				continue
+			}
+			r.peerRepeats[srcID] = 0
 			_, sent := pendingPullsSent[srcID]
-			if len(pullForHash) < maxPullReqs && !sent {
-				if !pullForHash[rMsg.LedgerHash] {
-					pullForHash[rMsg.LedgerHash] = true
+			if len(pendingPullsSent) < maxPullReqs && !sent {
+					doneCh := make(chan bool, 1)
+					pendingPullsSent[srcID] = doneCh
 					var rm reconcileMsg
 					json.Unmarshal(m.Data, &rm)
-					go func(id peer.ID, rm reconcileMsg) {
+					go func(id peer.ID, rm reconcileMsg, dCh chan bool) {
 						r.wg.Add(1)
-						r.sendPullReq(id, rm, ctx)
-						delete(pullForHash, rm.LedgerHash)
+						r.sendPullReq(id, rm, dCh, ctx)
 						r.wg.Done()
-					}(srcID, rm)
-				}
+					}(srcID, rm, doneCh)
 			}
 			pendingLock.Unlock()
 		}
@@ -394,12 +364,10 @@ func Reconcile(
 		peerRepeats: peerRepeats,
 		dag: dag,
 		log: log,
-		newPullCh: make(chan pendingPull, maxPullReqs),
 		prevChainIDs: make(map[string]struct{}, 2),
 		timeo: time.NewTimer(reconcilerTimeout),
 		finalHash: 0,
 	}
-	defer close(r.newPullCh)
 	r.prevChainIDs[r.dag.ChainID()] = struct{}{}
 
 	ctx, cancel := context.WithCancel(dag.ctx)
@@ -413,7 +381,7 @@ func Reconcile(
 	log.Info("Waiting to cancel...................")
 	r.wg.Wait()
 	if r.dag.Idx.HashLedger() != r.finalHash && r.finalHash != 0 {
-		panic("reconciler finished with wrong hash")
+		r.log.Error("reconciler finished with wrong hash")
 	}
 	err = topic.Close()
 	if err != nil && err != pubsub.ErrTopicClosed {

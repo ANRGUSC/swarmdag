@@ -64,7 +64,7 @@ full: build rm_tmp rm_logs
 	sudo core-cleanup
 	tmux kill-server | true
 	bash t.sh
-	cd coreemulator; sudo core-python wlan_partition.py
+	cd coreemulator; sudo core-python wlan_partition.py 2>&1 | tee -a ../build/main.log
 .PHONY: full
 
 clean:
