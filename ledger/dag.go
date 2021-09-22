@@ -48,6 +48,12 @@ type DAG struct {
     timeLock                []*Transaction
 }
 
+type LogInsert struct {
+    Type        string         `json:"Type"`
+    Hash        string         `json:"Hash"`
+    UnixTime    int64          `json:"UnixTime"`
+}
+
 var (
     headTx string
     headTxLock = &sync.Mutex{}
@@ -177,7 +183,13 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
 
     // catolog new tx
     if d.Idx.InsertTxHash(tx.MembershipID, tx.Hash) {
-        d.log.Infof("Inserted tx %s, unix_time (us): %d\n", tx.Hash[:6], time.Now().Unix())
+        l := LogInsert {
+            Type: "insertTx",
+            Hash: tx.Hash[:6],
+            UnixTime: time.Now().Unix(),
+        }
+        m, _ := json.Marshal(l)
+        d.log.Info(string(l))
     }
     return true
 }

@@ -4,17 +4,30 @@ import os
 import matplotlib.pyplot as plt
 import signal
 import numpy as np
+import glob
 
+DEFAULT_PATH = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+DEFAULT_PATH = os.path.join(DEFAULT_PATH, "build")
 
 def signal_handler(sig, frame):
     print("Ctrl+c detected, exiting and closing all plots...")
     sys.exit(0)
 
+
 class BlockPropParser:
     def __init__(self):
+        self.fig, self.ax = plt.subplots()
+        self.global_start_time = self.parse_global_start()
+        self.transactions = {} # k: tx hash, v: list of timestamps
+
+    def parse_global_start(self):
+        pass
+        # read all log files for start unixtime print and pick the lowest one.
 
 
-    # sample logline:  `INFO:dag.go:180:{"type": "insertTx", "hash": "1b3d9b", "unixTime": 1625264231}`
+    # sample logline:
+    # unix time in ns, will be converted to ms for processing
+    # `INFO:dag.go:180:{"Type": "insertTx", "Hash": "1b3d9b", "UnixTime": 1625264231}`
     def parse_file(self, file):
         with open(file, "r", errors='ignore') as f:
 
@@ -29,56 +42,36 @@ class BlockPropParser:
                 except json.decoder.JSONDecodeError:
                     continue
 
-                if logline["type"] is "insertTx":
+                if logline["Type"] is not "insertTx":
+                    continue
 
-                    hash = logline["Values"]["hash"]
-                    if hash not in self.blocks:
-                        self.blocks[hash] = {
-                            "mined": 0,
-                            "importTimes": []
-                        }
-                    if logline["message"].startswith("Imported new chain segment"):
-                        self.blocks[hash]["importTimes"].append(
-                            int(logline["unixNanoTime"] / 1e6)
-                        )
-                        self.total_final_blocks = max(logline["Values"]["number"],
-                                                      self.total_final_blocks)
-                    if logline["message"].startswith("Successfully sealed new"):
-                        self.blocks[hash]["mined"] = logline["unixNanoTime"] / 1e6
-                    if logline["message"].startswith("Chain reorg detected"):
-                        # number of blocks added from reorg
-                        # (logs don't indicate how many blocks dropped in reorg)
-                        # reorg_cnt += int(logline["Values"]["add"])
-                        reorg_cnt += 1
-
-            self.reorgs[file] = reorg_cnt
-            self.total_reorgs += reorg_cnt
+                if logline["Hash"] in self.transactions:
+                    self.transactions[logline["Hash"]].append(
+                        int(logline["UnixTime"] / 1e6)
+                    )
+                else:
+                    self.transactions[logline["Hash"]] = [logline["UnixTime"]]
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         path = sys.argv[1]
+    elif len(sys.argv) == 1:
+        print(f"using path {DEFAULT_PATH}")
+        path = DEFAULT_PATH
     else:
-        print("usage: python plot_resource.py {file_or_dir}")
+        print("usage: python plot_resource.py {dir_of_logs}")
         exit()
 
-    rPraser = ResourceParser()
+    rPraser = BlockPropParser()
 
-    if os.path.isdir(path):
-        files = os.listdir(path)
-        os.chdir(path)
-    else:
-        files = [path]
+    if os.path.isdir(path) is not True:
+        print("error: path not valid")
+        exit()
 
-    cnt = 0
-    for f in files:
-        if "-tx-" not in f:
-            resources = rPraser.parse_file(f)
-            rPraser.plot_resources(resources)
-            cnt += 1
-            if cnt == MAX_FILES:
-                break
+    for f in glob.glob(path + '/swarmdag*.log'):
+        print(f)
 
     print("Hit Ctrl-c to close figures (you may need to click on a figure)")
 
-    plt.tight_layout()
-    plt.show()
+    # plt.tight_layout()
+    # plt.show()
