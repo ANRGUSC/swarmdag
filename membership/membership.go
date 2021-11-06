@@ -346,6 +346,8 @@ func (m *manager) leadProposal(ctx context.Context) {
     var numNACKs int
     numVotes := 1
     voteTable := make(map[string]int, len(m.nextMembershipList))
+    startLead := time.Now().UnixNano()
+    isConfirmed := false
     dmCh := make(chan *pubsub.Message, 16)
     var vtLock sync.Mutex
     voteCtx, cancelVote := context.WithCancel(ctx)
@@ -398,7 +400,11 @@ func (m *manager) leadProposal(ctx context.Context) {
         if (float32(numVotes) / float32(memberCnt)) > m.conf.MajorityRatio {
             //let nodes know that votes confirm you are the leader
             // fix: this occurs for each vote message
-            m.proposeRoutineCh<-"CONFIRMED_LEADER"
+            if isConfirmed {
+                m.proposeRoutineCh <- "CONFIRMED_LEADER"
+                isConfirmed = true
+            }
+
             if numVotes == memberCnt {
                 installList := make(map[string]int64)
                 nextMembershipListLock.RLock()

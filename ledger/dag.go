@@ -189,7 +189,7 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
             UnixTime: time.Now().Unix(),
         }
         m, _ := json.Marshal(l)
-        d.log.Info(string(l))
+        d.log.Info(string(m))
     }
     return true
 }
