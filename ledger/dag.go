@@ -20,6 +20,7 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
 	_ "github.com/cayleygraph/cayley/graph/kv/bolt"
+    "github.com/ANRGUSC/swarmdag/swarmlog"
 )
 
 // Future Goals:
@@ -46,12 +47,6 @@ type DAG struct {
     log                     *logging.Logger
     reconcileBcastInterval  time.Duration
     timeLock                []*Transaction
-}
-
-type LogInsert struct {
-    Type        string         `json:"Type"`
-    Hash        string         `json:"Hash"`
-    UnixTime    int64          `json:"UnixTime"`
 }
 
 var (
@@ -183,7 +178,7 @@ func (d *DAG) InsertTx (tx *Transaction) bool {
 
     // catolog new tx
     if d.Idx.InsertTxHash(tx.MembershipID, tx.Hash) {
-        l := LogInsert {
+        l := swarmlog.InsertTx {
             Type: "insertTx",
             Hash: tx.Hash[:6],
             UnixTime: time.Now().Unix(),

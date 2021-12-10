@@ -183,6 +183,15 @@ func (m *manager) ConnectHandler(c network.Conn) {
 }
 
 func (m *manager) Start() {
+    l := swarmlog.MembershipStart{
+        Type: "membershipStart",
+        NodeID: m.conf.NodeID,
+        UnixTime: time.Now().UnixNano(),
+    }
+
+    logmsg, _ := json.Marshal(l)
+    m.log.Warning(string(logmsg))
+
     m.host.Network().SetConnHandler(m.ConnectHandler)
     peerChan := initMDNS(m.ctx, m.host, "rendezvousStr", 1000 * time.Millisecond)
     m.membershipList[m.host.ID().String()] = time.Now().UnixNano()
