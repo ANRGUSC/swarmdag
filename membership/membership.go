@@ -20,6 +20,7 @@ import (
 )
 
 var isLeader bool = false
+var proposeTime int64 = 0
 
 type nodeState int
 
@@ -590,6 +591,7 @@ func (m *manager) proposeRoutine() {
         case <-proposeTicker.C:
             if m.membershipChanged() {
                 proposeTicker.Stop()
+                proposeTime = time.Now().UnixNano()
                 m.log.Debugf("proposing membership update to view ID %d\n", m.viewID + 1)
                 m.state = LEAD_PROPOSAL
                 leader = m.host.ID().String() //for creating membership ID
@@ -899,7 +901,17 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
     }
     sort.IntSlice(memberNodeIDs).Sort()
     m.log.Debugf("************** INSTALLED VIEW %d **************", viewID)
-    m.log.Debugf("member node IDs: %+v\n", memberNodeIDs)
-    // monitor.ReportEventRequest("172.16.0.254:32001", "http://0.0.0.0:8086",
-    //     strconv.Itoa(m.conf.NodeID), m.membershipID)
+
+    l := swarmlog.InstallView{
+        Type: "installView",
+        NodeID: m.conf.NodeID,
+        UnixTime: time.Now().UnixNano(),
+        Members: memberNodeIDs,
+        ViewID: viewID,
+        AmLeader: amLeader,
+        ProposeTime: proposeTime,
+    }
+
+    logmsg, _ := json.Marshal(l)
+    m.log.Warning(string(logmsg))
 }
