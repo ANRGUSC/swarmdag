@@ -8,15 +8,17 @@ type InsertTx struct {
 
 type MembershipStart struct {
     Type        string         `json:"Type"`
-    NodeID      int64          `json:"NodeID"`
+    NodeID      int            `json:"NodeID"`
     UnixTime    int64          `json:"UnixTime"`
 }
 
 type InstallView struct {
     Type            string         `json:"Type"`
-    NodeID          int64          `json:"NodeID"`
+    NodeID          int            `json:"NodeID"`
     UnixTime        int64          `json:"UnixTime"`
+    ViewID          int            `json:"ViewID"`
     Members         []int          `json:"Members"`
     AmLeader        bool           `json:"AmLeader"`
-    ProposeTime     uint64         `json:"ProposeTime"`
+    ProposeTime     int64          `json:"ProposeTime"`
+    StartLead       int64          `json:"StartLead"`
 }

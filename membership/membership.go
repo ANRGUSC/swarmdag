@@ -16,11 +16,13 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	logging "github.com/op/go-logging"
 	"github.com/ANRGUSC/swarmdag/partition"
+    "github.com/ANRGUSC/swarmdag/swarmlog"
     "golang.org/x/sync/semaphore"
 )
 
 var isLeader bool = false
 var proposeTime int64 = 0
+var startLead int64 = 0
 
 type nodeState int
 
@@ -356,7 +358,7 @@ func (m *manager) leadProposal(ctx context.Context) {
     var numNACKs int
     numVotes := 1
     voteTable := make(map[string]int, len(m.nextMembershipList))
-    startLead := time.Now().UnixNano()
+    startLead = time.Now().UnixNano()
     isConfirmed := false
     dmCh := make(chan *pubsub.Message, 16)
     var vtLock sync.Mutex
@@ -874,6 +876,8 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
         amLeader = true
     } else {
         amLeader = false
+        proposeTime = 0
+        startLead = 0
     }
 
     nextMembershipListLock.Unlock()
@@ -910,6 +914,7 @@ func (m *manager) installMembershipView(mlist map[string]int64, leader string) {
         ViewID: viewID,
         AmLeader: amLeader,
         ProposeTime: proposeTime,
+        StartLead: startLead,
     }
 
     logmsg, _ := json.Marshal(l)

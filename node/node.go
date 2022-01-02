@@ -19,7 +19,9 @@ import (
 	logging "github.com/op/go-logging"
 )
 
-
+var (
+    enableLibp2pTracer = false
+)
 
 func getIPAddr(log *logging.Logger) (addr string, addrEnd int) {
     //need a safer way to grab IP addr
@@ -65,6 +67,7 @@ type Node struct {
 func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     var gossipPrivKey crypto.PrivKey
     var nodeID int
+    var psub *pubsub.PubSub
     log := logging.MustGetLogger("swarmdag")
     format := logging.MustStringFormatter(`%{level}:%{shortfile}:%{message}`)
     logging.SetBackend(logging.NewLogBackend(os.Stdout, "", 0))
@@ -80,6 +83,7 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
     default:
         panic("NewNode(): invalid orchestrator")
     }
+    cfg.Membership.NodeID = nodeID
 
     k, err := getPrivKey(keyfile, nodeID)
     if err != nil {
@@ -102,11 +106,14 @@ func NewNode(cfg *Config, gossipPort int, keyfile string) *Node {
   	)
 
     qSizeOpt := pubsub.WithPeerOutboundQueueSize(256)
-    jsonTracer, _ := pubsub.NewJSONTracer("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build/" + strconv.Itoa(nodeID) + ".log")
-    traceOpt := pubsub.WithEventTracer(jsonTracer)
-    // pExOpt := pubsub.WithPeerExchange(true)
     floodOpt := pubsub.WithFloodPublish(true)
-    psub, err := pubsub.NewGossipSub(ctx, host, traceOpt, qSizeOpt, floodOpt)
+    if enableLibp2pTracer {
+        jsonTracer, _ := pubsub.NewJSONTracer("/home/jasonatran/go/src/github.com/ANRGUSC/swarmdag/build/" + strconv.Itoa(nodeID) + ".log")
+        traceOpt := pubsub.WithEventTracer(jsonTracer)
+        psub, err = pubsub.NewGossipSub(ctx, host, traceOpt, qSizeOpt, floodOpt)
+    } else {
+        psub, err = pubsub.NewGossipSub(ctx, host, qSizeOpt, floodOpt)
+    }
 
     log.Infof("\n[*] Your Multiaddress Is: /ip4/%s/tcp/%v/p2p/%s\n",
     		  gossipHost, gossipPort, host.ID().Pretty())

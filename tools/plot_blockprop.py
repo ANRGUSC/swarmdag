@@ -14,15 +14,39 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 
-class BlockPropParser:
-    def __init__(self):
+class TxPropParser:
+    def __init__(self, path):
+        self.path = path
         self.fig, self.ax = plt.subplots()
         self.global_start_time = self.parse_global_start()
         self.transactions = {} # k: tx hash, v: list of timestamps
 
     def parse_global_start(self):
-        pass
-        # read all log files for start unixtime print and pick the lowest one.
+        start_time = 0
+        for file in glob.glob(path + '/swarmdag*.log'):
+            with open(file, "r", errors='ignore') as f:
+                for line in f:
+                    if line.startswith("WARNING:membership.go") is False:
+                        continue
+
+                    out = line.split(":", 3)
+                    line = out[3].rstrip('\n')
+
+                    try:
+                        logline = json.loads(line)
+                    except json.decoder.JSONDecodeError:
+                        continue
+
+                    if logline["Type"] != "membershipStart":
+                        continue
+
+                    print(logline["UnixTime"])
+                    if start_time == 0:
+                        start_time = logline["UnixTime"]
+                    else:
+                        start_time = min(start_time, logline["UnixTime"])
+
+        print(f"actual start time: {start_time}")
 
 
     # sample logline:
@@ -62,11 +86,12 @@ if __name__ == '__main__':
         print("usage: python plot_resource.py {dir_of_logs}")
         exit()
 
-    rPraser = BlockPropParser()
 
     if os.path.isdir(path) is not True:
         print("error: path not valid")
         exit()
+
+    txParser = TxPropParser(path)
 
     for f in glob.glob(path + '/swarmdag*.log'):
         print(f)

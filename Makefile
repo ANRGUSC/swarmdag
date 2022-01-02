@@ -53,7 +53,7 @@ rm_tmp:
 .PHONY: rm_tmp
 
 rm_logs:
-	sudo rm -f build/tmlog*.log
+	sudo rm -f build/*.log
 .PHONY: rm_logs
 
 run: stop build rm_tmp local
